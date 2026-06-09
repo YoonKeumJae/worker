@@ -102,8 +102,8 @@
 - `Block force pushes`를 켠다.
 - `Restrict deletions`를 켠다.
 - `Require linear history`를 켠다.
-- `Automatically request Copilot code review`는 끈다.
-- Codex PR 리뷰는 GitHub Actions가 아니라 Codex repository 등록 방식으로 사용한다.
+- `Automatically request Copilot code review`는 끈다. Copilot 자동 리뷰 비활성화는 `docs/GITHUB_SETTINGS.md` 절차를 따른다.
+- Codex PR 리뷰는 GitHub Actions가 아니라 Codex repository 등록 방식으로 사용한다. 설정 절차는 `docs/GITHUB_SETTINGS.md`를 따른다.
 - `Do not allow bypassing the above settings`는 초기 개인 개발 단계에서는 선택 사항이다. 팀 개발이나 배포 안정화 후 켠다.
 
 ## Review guidelines
