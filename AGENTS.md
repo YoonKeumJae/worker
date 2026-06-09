@@ -86,6 +86,26 @@
 - 배포 릴리스나 긴급 수정이 필요할 때만 `release/*`, `hotfix/*` 브랜치를 사용한다.
 - 장기 유지되는 `develop` 브랜치는 기본으로 사용하지 않는다. 필요할 때만 사용자와 합의 후 도입한다.
 
+## GitHub 브랜치 보호 설정
+
+- `main` 브랜치는 GitHub Rulesets로 보호한다.
+- Ruleset 이름은 `Protect main`을 사용한다.
+- Enforcement status는 `Active`로 설정한다.
+- Target branches는 `Include default branch` 또는 `main`으로 설정한다.
+- `Require a pull request before merging`을 켠다.
+- Required approvals는 `1`로 설정한다.
+- `Dismiss stale pull request approvals when new commits are pushed`를 켠다.
+- `Require conversation resolution before merging`을 켠다.
+- `Require status checks to pass`를 켠다.
+- 필수 status check는 `Validate`를 사용한다.
+- `Validate` check가 아직 목록에 없으면 첫 PR에서 CI를 한 번 실행한 뒤 Ruleset에 추가한다.
+- `Block force pushes`를 켠다.
+- `Restrict deletions`를 켠다.
+- `Require linear history`를 켠다.
+- `Automatically request Copilot code review`는 끈다.
+- Codex PR 리뷰는 GitHub Actions가 아니라 Codex repository 등록 방식으로 사용한다.
+- `Do not allow bypassing the above settings`는 초기 개인 개발 단계에서는 선택 사항이다. 팀 개발이나 배포 안정화 후 켠다.
+
 ## Review guidelines
 
 - 리뷰는 심각한 버그, 보안 위험, 데이터 손상 가능성, 테스트 누락을 우선한다.
