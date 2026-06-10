@@ -13,6 +13,44 @@
 - 로컬 작업 엔진: Rust
 - 패키지 매니저: pnpm
 
+현재 scaffold 구조:
+
+```text
+src/
+  main.tsx
+  app/
+    App.tsx
+    App.test.tsx
+    styles.css
+  components/
+    ToolSidebar.tsx
+  tools/
+    qr-code/
+      QrCodeToolPlaceholder.tsx
+public/
+  favicon.svg
+src-tauri/
+  Cargo.lock
+  Cargo.toml
+  tauri.conf.json
+  capabilities/
+    default.json
+  icons/
+    icon.png
+    icon.icns
+    icon.ico
+    32x32.png
+    128x128.png
+    128x128@2x.png
+  src/
+    main.rs
+    lib.rs
+    commands/
+      mod.rs
+    tools/
+      mod.rs
+```
+
 ## 레이어
 
 ### UI 레이어
@@ -63,6 +101,8 @@ src/
       qrCodeValidation.ts
 ```
 
+현재는 `src/tools/qr-code/QrCodeToolPlaceholder.tsx`만 존재한다. QR 생성 기능, validation, 저장/복사 command는 후속 작업에서 추가한다.
+
 ### Tauri/Rust 레이어
 
 역할:
@@ -82,6 +122,8 @@ src-tauri/
     tools/
       qr_code.rs
 ```
+
+현재 Rust 레이어는 Tauri 앱 실행 엔트리만 가진다. `src-tauri/src/commands/`와 `src-tauri/src/tools/`는 후속 도구별 Rust 구현을 위한 자리다.
 
 ## 데이터 흐름
 
@@ -142,6 +184,5 @@ QR코드 생성 첫 버전 흐름:
 
 ## 미정 사항
 
-- 최종 디렉터리 구조는 Tauri scaffold 결과에 맞춰 조정한다.
 - QR 생성 라이브러리는 scaffold 후 검토한다.
 - 클립보드 이미지를 UI 또는 Rust 어느 쪽에서 처리할지 구현 검증 후 확정한다.

@@ -80,3 +80,13 @@ pnpm tauri dev
 - CI가 통과한다.
 - README, DEVELOPMENT, ARCHITECTURE가 실제 구조와 일치한다.
 - 후속 QR 기능 구현 PR을 만들 수 있다.
+
+## 실제 결과
+
+- `chore/scaffold-tauri` 브랜치에서 Tauri 2 + React + TypeScript + Vite + pnpm scaffold를 추가했다.
+- QR 기능 구현은 제외하고 placeholder 화면만 추가했다.
+- CI는 `pnpm install --frozen-lockfile`, `pnpm run lint`, `pnpm run test`, `pnpm run build`, `pnpm run check:tauri`를 직접 실행한다.
+- 로컬 검증에서 `pnpm run lint`, `pnpm run test`, `pnpm run build`, `pnpm run check:tauri`는 통과했다.
+- `pnpm run tauri:build`와 `pnpm tauri build`는 통과했다.
+- macOS 앱 bundle은 `src-tauri/target/release/bundle/macos/Worker.app`에 생성됐다.
+- DMG는 `src-tauri/target/release/bundle/dmg/Worker_0.1.0_aarch64.dmg`에 생성됐다.

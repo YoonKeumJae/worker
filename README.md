@@ -2,7 +2,7 @@
 
 `worker`는 업무 중 반복적으로 필요한 작은 작업들을 로컬에서 처리하는 macOS용 GUI 앱이다.
 
-첫 버전은 URL을 입력받아 QR코드를 생성한다. 생성된 QR코드는 PNG 저장, SVG 저장, 이미지 클립보드 복사를 지원한다.
+첫 버전은 URL을 입력받아 QR코드를 생성하는 기능을 목표로 한다. 현재 저장소에는 Tauri 2 기반 앱 scaffold가 준비되어 있고, QR 기능 구현은 후속 작업에서 진행한다.
 
 ## 목표
 
@@ -47,32 +47,75 @@
 - 파일 작업은 원본 손상 위험을 줄이는 방식으로 구현한다.
 - macOS 우선 개발, Windows 확장 가능성을 고려한다.
 
+## 프로젝트 구조
+
+```text
+src/
+  app/
+  components/
+  tools/
+    qr-code/
+public/
+  favicon.svg
+src-tauri/
+  Cargo.lock
+  Cargo.toml
+  capabilities/
+  icons/
+  src/
+    commands/
+    tools/
+.github/workflows/
+```
+
 ## 개발 환경
 
-프로젝트 scaffold 후 아래 항목을 확정한다.
+필요 도구:
 
-- Node.js 버전
-- pnpm 버전
-- Rust 버전
-- Tauri CLI 사용 방식
-- macOS 빌드 요구사항
-- Windows 빌드 요구사항
+- Node.js 22.12.0 이상 또는 20.19.0 이상
+- pnpm 10
+- Rust stable
+- Tauri 2 prerequisites
+- macOS 개발 환경
 
 ## 실행
 
-프로젝트 scaffold 후 실행 명령을 추가한다.
+의존성 설치:
 
 ```bash
 pnpm install
-pnpm tauri dev
+```
+
+Vite 개발 서버:
+
+```bash
+pnpm run dev
+```
+
+Tauri 개발 앱:
+
+```bash
+pnpm run tauri:dev
+```
+
+## 검증
+
+```bash
+pnpm run lint
+pnpm run test
+pnpm run build
+```
+
+Tauri/Rust 설정 확인:
+
+```bash
+pnpm run check:tauri
 ```
 
 ## 빌드
 
-프로젝트 scaffold 후 빌드 명령을 추가한다.
-
 ```bash
-pnpm tauri build
+pnpm run tauri:build
 ```
 
 ## 문서
