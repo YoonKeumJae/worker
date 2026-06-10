@@ -55,8 +55,13 @@ src/
   components/
   tools/
     qr-code/
+public/
+  favicon.svg
 src-tauri/
+  Cargo.lock
+  Cargo.toml
   capabilities/
+  icons/
   src/
     commands/
     tools/

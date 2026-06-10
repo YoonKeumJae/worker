@@ -27,11 +27,21 @@ src/
   tools/
     qr-code/
       QrCodeToolPlaceholder.tsx
+public/
+  favicon.svg
 src-tauri/
+  Cargo.lock
   Cargo.toml
   tauri.conf.json
   capabilities/
     default.json
+  icons/
+    icon.png
+    icon.icns
+    icon.ico
+    32x32.png
+    128x128.png
+    128x128@2x.png
   src/
     main.rs
     lib.rs

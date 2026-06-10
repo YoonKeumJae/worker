@@ -87,4 +87,6 @@ pnpm tauri dev
 - QR 기능 구현은 제외하고 placeholder 화면만 추가했다.
 - CI는 `pnpm install --frozen-lockfile`, `pnpm run lint`, `pnpm run test`, `pnpm run build`를 직접 실행한다.
 - 로컬 검증에서 `pnpm run lint`, `pnpm run test`, `pnpm run build`는 통과했다.
-- 현재 로컬 환경에는 `rustc`와 `cargo`가 없어 `pnpm run tauri:build`는 실행하지 못했다.
+- `pnpm run tauri:build`와 `pnpm tauri build`는 통과했다.
+- macOS 앱 bundle은 `src-tauri/target/release/bundle/macos/Worker.app`에 생성됐다.
+- DMG는 `src-tauri/target/release/bundle/dmg/Worker_0.1.0_aarch64.dmg`에 생성됐다.

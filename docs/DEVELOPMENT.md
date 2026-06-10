@@ -36,7 +36,8 @@ cargo --version
 
 - Node.js: `v24.14.0`
 - pnpm: `10.24.0`
-- Rust: 현재 작업 환경에서 `rustc`와 `cargo` 명령 없음
+- Rust: `rustc 1.96.0`
+- Cargo: `cargo 1.96.0`
 
 CI 기준:
 
@@ -81,7 +82,20 @@ Tauri 앱 패키징:
 pnpm run tauri:build
 ```
 
+다음 명령도 같은 Tauri build를 실행한다.
+
+```bash
+pnpm tauri build
+```
+
 `tauri:dev`와 `tauri:build`는 Rust stable과 Tauri OS별 prerequisites가 필요하다.
+
+macOS 빌드 산출물:
+
+```text
+src-tauri/target/release/bundle/macos/Worker.app
+src-tauri/target/release/bundle/dmg/Worker_0.1.0_aarch64.dmg
+```
 
 ## 개발 절차
 
