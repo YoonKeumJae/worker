@@ -77,5 +77,14 @@ pnpm tauri build
 
 ## 문서
 
+- [문서 인덱스](docs/README.md)
 - [프로젝트 명세](docs/PROJECT_SPEC.md)
+- [아키텍처](docs/ARCHITECTURE.md)
+- [디자인 원칙](docs/DESIGN_PRINCIPLES.md)
+- [개발 가이드](docs/DEVELOPMENT.md)
+- [GitHub 설정](docs/GITHUB_SETTINGS.md)
 - [에이전트 작업 규칙](AGENTS.md)
+- [기술 스택 결정](docs/DECISIONS/0001-tech-stack.md)
+- [문서 구조 결정](docs/DECISIONS/0002-documentation-structure.md)
+- [QR코드 기능 명세](docs/FEATURES/qr-code.md)
+- [Tauri 스캐폴딩 계획](docs/PLANS/2026-06-10-scaffold-tauri.md)
