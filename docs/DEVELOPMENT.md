@@ -32,33 +32,56 @@ rustc --version
 cargo --version
 ```
 
-## 프로젝트 생성 전 상태
+현재 확인된 로컬 상태:
 
-현재 저장소는 문서와 GitHub 운영 설정이 준비된 상태다. 실제 Tauri scaffold는 아직 생성하지 않았다.
+- Node.js: `v24.14.0`
+- pnpm: `10.24.0`
+- Rust: 현재 작업 환경에서 `rustc`와 `cargo` 명령 없음
 
-scaffold 후 이 문서에 다음을 갱신한다.
+CI 기준:
 
-- 정확한 Node.js 버전
-- 정확한 pnpm 버전
-- 정확한 Rust toolchain
-- 실제 설치 명령
-- 실제 실행 명령
-- 실제 테스트 명령
-- 실제 빌드 명령
+- Node.js 22
+- pnpm 10
+- `pnpm install --frozen-lockfile`
+- `pnpm run lint`
+- `pnpm run test`
+- `pnpm run build`
 
-## 예상 명령
-
-scaffold 후 기본 명령은 다음 형태를 목표로 한다.
+## 설치
 
 ```bash
 pnpm install
-pnpm tauri dev
-pnpm test
-pnpm build
-pnpm tauri build
 ```
 
-명령 이름이 달라지면 `README.md`, `docs/DEVELOPMENT.md`, CI를 함께 갱신한다.
+## 실행
+
+Vite 개발 서버:
+
+```bash
+pnpm run dev
+```
+
+Tauri 개발 앱:
+
+```bash
+pnpm run tauri:dev
+```
+
+## 테스트와 검증
+
+```bash
+pnpm run lint
+pnpm run test
+pnpm run build
+```
+
+Tauri 앱 패키징:
+
+```bash
+pnpm run tauri:build
+```
+
+`tauri:dev`와 `tauri:build`는 Rust stable과 Tauri OS별 prerequisites가 필요하다.
 
 ## 개발 절차
 
@@ -101,6 +124,5 @@ QR 기능 첫 버전 확인:
 
 ## 미정 사항
 
-- scaffold 후 실제 package scripts 확정
 - Tauri build prerequisites 상세화
 - Windows 개발/빌드 절차
