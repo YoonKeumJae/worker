@@ -72,7 +72,7 @@ src-tauri/
 
 필요 도구:
 
-- Node.js 22
+- Node.js 22.12.0 이상 또는 20.19.0 이상
 - pnpm 10
 - Rust stable
 - Tauri 2 prerequisites
@@ -104,6 +104,12 @@ pnpm run tauri:dev
 pnpm run lint
 pnpm run test
 pnpm run build
+```
+
+Tauri/Rust 설정 확인:
+
+```bash
+pnpm run check:tauri
 ```
 
 ## 빌드

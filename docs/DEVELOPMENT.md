@@ -17,7 +17,7 @@
 
 필요 도구:
 
-- Node.js 22
+- Node.js 22.12.0 이상 또는 20.19.0 이상
 - pnpm 10
 - Rust stable
 - Tauri 개발 prerequisites
@@ -41,12 +41,13 @@ cargo --version
 
 CI 기준:
 
-- Node.js 22
+- Node.js 22.12.0
 - pnpm 10
 - `pnpm install --frozen-lockfile`
 - `pnpm run lint`
 - `pnpm run test`
 - `pnpm run build`
+- `pnpm run check:tauri`
 
 ## 설치
 
@@ -74,6 +75,7 @@ pnpm run tauri:dev
 pnpm run lint
 pnpm run test
 pnpm run build
+pnpm run check:tauri
 ```
 
 Tauri 앱 패키징:
