@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import { maxQrCodeUrlByteLength } from "../tools/qr-code/qrCodeValidation";
 import { App } from "./App";
 
 describe("App", () => {
@@ -51,7 +52,9 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.change(screen.getByLabelText("URL"), {
-      target: { value: `https://example.com/${"a".repeat(2000)}` },
+      target: {
+        value: `https://example.com/${"a".repeat(maxQrCodeUrlByteLength)}`,
+      },
     });
 
     expect(screen.getByRole("alert")).toHaveTextContent(
