@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { validateQrCodeUrl } from "./qrCodeValidation";
+import {
+  maxQrCodeUrlByteLength,
+  validateQrCodeUrl,
+} from "./qrCodeValidation";
 
 describe("validateQrCodeUrl", () => {
   it("rejects empty URL input", () => {
@@ -33,6 +36,16 @@ describe("validateQrCodeUrl", () => {
       isValid: true,
       value: "http://example.com/",
       errorMessage: null,
+    });
+  });
+
+  it("rejects URLs that are too long for QR preview rendering", () => {
+    const longUrl = `https://example.com/${"a".repeat(maxQrCodeUrlByteLength)}`;
+
+    expect(validateQrCodeUrl(longUrl)).toEqual({
+      isValid: false,
+      value: null,
+      errorMessage: "QR코드로 만들 URL이 너무 깁니다.",
     });
   });
 });

@@ -10,6 +10,8 @@ export type QrCodeUrlValidationResult =
       errorMessage: string;
     };
 
+export const maxQrCodeUrlByteLength = 2_000;
+
 export function validateQrCodeUrl(rawUrl: string): QrCodeUrlValidationResult {
   const trimmedUrl = rawUrl.trim();
 
@@ -36,9 +38,22 @@ export function validateQrCodeUrl(rawUrl: string): QrCodeUrlValidationResult {
       };
     }
 
+    const normalizedUrl = parsedUrl.href;
+    const normalizedUrlByteLength = new TextEncoder().encode(normalizedUrl).length;
+
+    // qrcode.react는 QR 최대 용량을 넘는 payload를 렌더링할 때 예외를 던질 수 있다.
+    // error correction M 기준 QR version 40 byte mode 최대치보다 낮은 앱 제한을 둬 렌더 실패를 validation에서 막는다.
+    if (normalizedUrlByteLength > maxQrCodeUrlByteLength) {
+      return {
+        isValid: false,
+        value: null,
+        errorMessage: "QR코드로 만들 URL이 너무 깁니다.",
+      };
+    }
+
     return {
       isValid: true,
-      value: parsedUrl.href,
+      value: normalizedUrl,
       errorMessage: null,
     };
   } catch {

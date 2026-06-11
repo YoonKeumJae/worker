@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { App } from "./App";
@@ -45,5 +45,20 @@ describe("App", () => {
       screen.getByRole("img", { name: "입력한 URL의 QR코드 미리보기" }),
     ).toBeInTheDocument();
     expect(screen.getByText("생성됨")).toBeInTheDocument();
+  });
+
+  it("shows a validation error instead of rendering an oversized QR payload", async () => {
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText("URL"), {
+      target: { value: `https://example.com/${"a".repeat(2000)}` },
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "QR코드로 만들 URL이 너무 깁니다.",
+    );
+    expect(
+      screen.queryByRole("img", { name: "입력한 URL의 QR코드 미리보기" }),
+    ).not.toBeInTheDocument();
   });
 });

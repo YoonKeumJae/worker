@@ -222,6 +222,14 @@ select {
   }
 }
 
+@media (min-width: 721px) and (max-width: 980px) {
+  .qr-tool {
+    /* sidebar 220px와 canvas padding 80px가 남은 폭을 줄인다.
+       두 column 최소폭이 깨지는 중간 창에서는 QR 도구만 단일 column으로 접는다. */
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (prefers-reduced-transparency: reduce) {
   .tool-sidebar {
     background: #ffffff;
