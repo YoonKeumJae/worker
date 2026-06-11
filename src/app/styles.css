@@ -77,26 +77,112 @@ select {
   padding: 40px;
 }
 
-.placeholder-panel {
+.qr-tool {
+  /* QR 도구는 입력과 결과를 나란히 두는 작업 화면이다.
+     작은 창에서는 아래 media query가 단일 column으로 바꿔 입력 흐름을 유지한다. */
   display: grid;
-  gap: 16px;
-  max-width: 720px;
+  grid-template-columns: minmax(280px, 520px) minmax(280px, 360px);
+  align-items: start;
+  gap: 28px;
+  width: min(100%, 960px);
 }
 
-.placeholder-panel h1 {
+.qr-input-panel,
+.qr-preview-panel {
+  display: grid;
+  gap: 20px;
+}
+
+.qr-heading {
+  display: grid;
+  gap: 8px;
+}
+
+.tool-kicker {
+  margin: 0;
+  color: #2441c2;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.qr-heading h1 {
   margin: 0;
   font-size: 32px;
   line-height: 1.2;
 }
 
-.placeholder-panel p {
-  max-width: 560px;
-  margin: 0;
-  color: #515154;
-  line-height: 1.6;
+.field-group {
+  display: grid;
+  gap: 8px;
 }
 
-.preview-box {
+.field-label {
+  color: #1d1d1f;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.url-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #c7c7cc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1d1d1f;
+  line-height: 1.4;
+}
+
+.url-input:focus {
+  border-color: #2441c2;
+  outline: 3px solid rgba(91, 124, 250, 0.24);
+}
+
+.url-input[aria-invalid="true"] {
+  border-color: #b42318;
+}
+
+.field-hint,
+.field-error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.field-hint {
+  color: #515154;
+}
+
+.field-error {
+  color: #b42318;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.preview-header h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.preview-state {
+  padding: 4px 8px;
+  border: 1px solid #d2d2d7;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #515154;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.qr-preview-surface {
+  /* 디자인 원칙상 QR 미리보기에는 glass/blur/gradient를 쓰지 않는다.
+     불투명 흰색 surface와 고정 정사각형으로 스캔 안정성을 우선한다. */
   display: grid;
   width: min(100%, 320px);
   aspect-ratio: 1;
@@ -104,7 +190,17 @@ select {
   border: 1px solid #d2d2d7;
   border-radius: 8px;
   background: #ffffff;
+}
+
+.qr-preview-empty {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  padding: 24px;
   color: #6e6e73;
+  text-align: center;
+  line-height: 1.5;
 }
 
 @media (max-width: 720px) {
@@ -119,6 +215,18 @@ select {
 
   .tool-canvas {
     padding: 24px;
+  }
+
+  .qr-tool {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 721px) and (max-width: 980px) {
+  .qr-tool {
+    /* sidebar 220px와 canvas padding 80px가 남은 폭을 줄인다.
+       두 column 최소폭이 깨지는 중간 창에서는 QR 도구만 단일 column으로 접는다. */
+    grid-template-columns: 1fr;
   }
 }
 
