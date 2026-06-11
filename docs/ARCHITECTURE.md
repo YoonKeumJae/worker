@@ -26,7 +26,9 @@ src/
     ToolSidebar.tsx
   tools/
     qr-code/
-      QrCodeToolPlaceholder.tsx
+      QrCodeTool.tsx
+      qrCodeValidation.ts
+      qrCodeValidation.test.ts
 public/
   favicon.svg
 src-tauri/
@@ -101,7 +103,7 @@ src/
       qrCodeValidation.ts
 ```
 
-현재는 `src/tools/qr-code/QrCodeToolPlaceholder.tsx`만 존재한다. QR 생성 기능, validation, 저장/복사 command는 후속 작업에서 추가한다.
+현재 QR tool module은 URL 입력, URL validation, QR 미리보기를 포함한다. PNG/SVG 저장과 이미지 클립보드 복사 command는 후속 작업에서 추가한다.
 
 ### Tauri/Rust 레이어
 
@@ -132,9 +134,9 @@ QR코드 생성 첫 버전 흐름:
 1. 사용자가 URL을 입력한다.
 2. UI가 URL 형식을 검증한다.
 3. QR 미리보기는 UI에서 즉시 생성한다.
-4. PNG/SVG 저장 또는 이미지 복사는 Tauri command를 통해 실행한다.
-5. Rust command는 파일 저장/클립보드 작업을 수행한다.
-6. 결과 상태를 UI에 반환한다.
+4. 현재 구현은 미리보기까지 제공한다.
+5. PNG/SVG 저장 또는 이미지 복사는 후속 PR에서 Tauri command를 통해 실행한다.
+6. Rust command는 후속 PR에서 파일 저장/클립보드 작업을 수행한다.
 
 ## 기능 추가 방식
 
@@ -182,7 +184,10 @@ QR코드 생성 첫 버전 흐름:
 - 도구 간 내부 상태를 직접 공유함
 - OS별 처리가 UI에 노출됨
 
+## 확정 사항
+
+- QR 미리보기 생성 라이브러리는 `qrcode.react`를 사용한다.
+
 ## 미정 사항
 
-- QR 생성 라이브러리는 scaffold 후 검토한다.
 - 클립보드 이미지를 UI 또는 Rust 어느 쪽에서 처리할지 구현 검증 후 확정한다.
