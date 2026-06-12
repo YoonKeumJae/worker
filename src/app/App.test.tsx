@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { saveQrCodePng } from "../tools/qr-code/qrCodePng";
+import { saveQrCodeSvg } from "../tools/qr-code/qrCodeSvg";
 import { maxQrCodeUrlByteLength } from "../tools/qr-code/qrCodeValidation";
 import { App } from "./App";
 
@@ -9,9 +10,14 @@ vi.mock("../tools/qr-code/qrCodePng", () => ({
   saveQrCodePng: vi.fn(),
 }));
 
+vi.mock("../tools/qr-code/qrCodeSvg", () => ({
+  saveQrCodeSvg: vi.fn(),
+}));
+
 describe("App", () => {
   beforeEach(() => {
     vi.mocked(saveQrCodePng).mockReset();
+    vi.mocked(saveQrCodeSvg).mockReset();
   });
 
   it("renders the QR code tool", () => {
@@ -21,6 +27,7 @@ describe("App", () => {
     expect(screen.getByLabelText("URL")).toBeInTheDocument();
     expect(screen.getByText("URL 입력 후 QR코드 표시")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "PNG 저장" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "SVG 저장" })).toBeDisabled();
   });
 
   it("shows a validation error for unsupported URL input", async () => {
@@ -57,6 +64,7 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("생성됨")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "PNG 저장" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "SVG 저장" })).toBeEnabled();
   });
 
   it("shows a validation error instead of rendering an oversized QR payload", async () => {
@@ -119,6 +127,55 @@ describe("App", () => {
     await user.type(screen.getByLabelText("URL"), "https://example.com/path");
     await user.click(screen.getByRole("button", { name: "PNG 저장" }));
     expect(await screen.findByRole("status")).toHaveTextContent("PNG 저장 완료.");
+
+    await user.type(screen.getByLabelText("URL"), "?next=1");
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("shows a success status after saving SVG", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveQrCodeSvg).mockResolvedValue({ status: "saved" });
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "https://example.com/path");
+    await user.click(screen.getByRole("button", { name: "SVG 저장" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("SVG 저장 완료.");
+  });
+
+  it("shows a cancelled status when SVG save dialog is cancelled", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveQrCodeSvg).mockResolvedValue({ status: "cancelled" });
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "https://example.com/path");
+    await user.click(screen.getByRole("button", { name: "SVG 저장" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("SVG 저장 취소.");
+  });
+
+  it("shows a failure status when SVG save fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveQrCodeSvg).mockRejectedValue(new Error("write failed"));
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "https://example.com/path");
+    await user.click(screen.getByRole("button", { name: "SVG 저장" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "SVG 저장 실패. 다시 시도하세요.",
+    );
+  });
+
+  it("clears SVG save status when URL input changes", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveQrCodeSvg).mockResolvedValue({ status: "saved" });
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "https://example.com/path");
+    await user.click(screen.getByRole("button", { name: "SVG 저장" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("SVG 저장 완료.");
 
     await user.type(screen.getByLabelText("URL"), "?next=1");
 

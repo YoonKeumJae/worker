@@ -209,25 +209,37 @@ select {
   gap: 10px;
 }
 
-.primary-action {
+.primary-action,
+.secondary-action {
   min-height: 40px;
   padding: 9px 14px;
-  border: 1px solid #2441c2;
   border-radius: 8px;
-  background: #2441c2;
-  color: #ffffff;
   font-weight: 700;
   line-height: 1.2;
 }
 
-.primary-action:disabled {
+.primary-action {
+  border: 1px solid #2441c2;
+  background: #2441c2;
+  color: #ffffff;
+}
+
+.secondary-action {
+  border: 1px solid #c7c7cc;
+  background: #ffffff;
+  color: #1d1d1f;
+}
+
+.primary-action:disabled,
+.secondary-action:disabled {
   border-color: #d2d2d7;
   background: #f5f5f7;
   color: #86868b;
   cursor: not-allowed;
 }
 
-.primary-action:not(:disabled):focus {
+.primary-action:not(:disabled):focus,
+.secondary-action:not(:disabled):focus {
   outline: 3px solid rgba(91, 124, 250, 0.24);
   outline-offset: 2px;
 }
