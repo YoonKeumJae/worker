@@ -1,12 +1,24 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { saveQrCodePng } from "./qrCodePng";
 import { validateQrCodeUrl } from "./qrCodeValidation";
 
 const qrPreviewSize = 232;
+type PngSaveStatus = "idle" | "saving" | "saved" | "cancelled" | "failed";
+
+const pngSaveStatusMessage: Record<PngSaveStatus, string | null> = {
+  idle: null,
+  saving: "PNG 저장 중...",
+  saved: "PNG 저장 완료.",
+  cancelled: "PNG 저장 취소.",
+  failed: "PNG 저장 실패. 다시 시도하세요.",
+};
 
 export function QrCodeTool() {
   const [urlInput, setUrlInput] = useState("");
   const [hasVisitedUrlInput, setHasVisitedUrlInput] = useState(false);
+  const [pngSaveStatus, setPngSaveStatus] = useState<PngSaveStatus>("idle");
+  const qrPreviewSurfaceRef = useRef<HTMLDivElement>(null);
 
   // validation은 순수 함수로 분리해 UI와 도메인 규칙을 분리한다.
   // useMemo는 입력이 바뀔 때만 검증하게 해 렌더링 흐름을 명확히 유지한다.
@@ -22,6 +34,35 @@ export function QrCodeTool() {
   const inputDescriptionId = shouldShowError
     ? "qr-code-url-error"
     : "qr-code-url-hint";
+  const canSavePng = validationResult.isValid && pngSaveStatus !== "saving";
+  const pngSaveMessage = pngSaveStatusMessage[pngSaveStatus];
+
+  async function handleSavePng() {
+    if (!validationResult.isValid || pngSaveStatus === "saving") {
+      return;
+    }
+
+    const svgElement = qrPreviewSurfaceRef.current?.querySelector("svg");
+
+    if (!(svgElement instanceof SVGSVGElement)) {
+      setPngSaveStatus("failed");
+      return;
+    }
+
+    setPngSaveStatus("saving");
+
+    try {
+      const result = await saveQrCodePng(validationResult.value, svgElement);
+      setPngSaveStatus(result.status === "saved" ? "saved" : "cancelled");
+    } catch {
+      setPngSaveStatus("failed");
+    }
+  }
+
+  function handleUrlInputChange(nextUrlInput: string) {
+    setUrlInput(nextUrlInput);
+    setPngSaveStatus("idle");
+  }
 
   return (
     <div className="qr-tool">
@@ -44,7 +85,7 @@ export function QrCodeTool() {
             value={urlInput}
             aria-invalid={shouldShowError}
             aria-describedby={inputDescriptionId}
-            onChange={(event) => setUrlInput(event.target.value)}
+            onChange={(event) => handleUrlInputChange(event.target.value)}
             onBlur={() => setHasVisitedUrlInput(true)}
           />
           {shouldShowError ? (
@@ -67,7 +108,11 @@ export function QrCodeTool() {
           </span>
         </div>
 
-        <div className="qr-preview-surface" aria-live="polite">
+        <div
+          className="qr-preview-surface"
+          aria-live="polite"
+          ref={qrPreviewSurfaceRef}
+        >
           {validationResult.isValid ? (
             <QRCodeSVG
               value={validationResult.value}
@@ -85,6 +130,26 @@ export function QrCodeTool() {
             </div>
           )}
         </div>
+
+        <div className="qr-action-group">
+          <button
+            className="primary-action"
+            type="button"
+            disabled={!canSavePng}
+            onClick={handleSavePng}
+          >
+            PNG 저장
+          </button>
+        </div>
+
+        {pngSaveMessage !== null ? (
+          <p
+            className={`qr-save-status qr-save-status-${pngSaveStatus}`}
+            role={pngSaveStatus === "failed" ? "alert" : "status"}
+          >
+            {pngSaveMessage}
+          </p>
+        ) : null}
       </section>
     </div>
   );
