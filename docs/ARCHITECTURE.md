@@ -99,12 +99,14 @@ src/
   tools/
     qr-code/
       QrCodeTool.tsx
-      qrCodeTypes.ts
+      qrCodePng.ts
+      qrCodeSvg.ts
       qrCodeValidation.ts
 ```
 
-현재 QR tool module은 URL 입력, URL validation, QR 미리보기를 포함한다. PNG/SVG 저장과 이미지 클립보드 복사 command는 후속 작업에서 추가한다.
+현재 QR tool module은 URL 입력, URL validation, QR 미리보기, PNG/SVG 저장을 포함한다. 이미지 클립보드 복사 command는 후속 작업에서 추가한다.
 PNG 저장은 `src/tools/qr-code/qrCodePng.ts`에서 save dialog 호출, SVG-to-PNG 변환, Rust command 호출을 조율한다.
+SVG 저장은 `src/tools/qr-code/qrCodeSvg.ts`에서 save dialog 호출, SVG 직렬화, Rust command 호출을 조율한다.
 
 ### Tauri/Rust 레이어
 
@@ -128,6 +130,7 @@ src-tauri/
 
 현재 Rust 레이어는 Tauri 앱 실행 엔트리만 가진다. `src-tauri/src/commands/`와 `src-tauri/src/tools/`는 후속 도구별 Rust 구현을 위한 자리다.
 현재 Rust 레이어는 `save_qr_code_png` command로 UI가 전달한 PNG bytes를 사용자가 선택한 `.png` 경로에 저장한다.
+`save_qr_code_svg` command는 UI가 전달한 SVG text를 사용자가 선택한 `.svg` 경로에 저장한다.
 
 ## 데이터 흐름
 
@@ -140,7 +143,11 @@ QR코드 생성 첫 버전 흐름:
 5. UI가 현재 QR SVG를 PNG bytes로 변환한다.
 6. UI가 `save_qr_code_png` command에 경로와 bytes를 전달한다.
 7. Rust command가 PNG signature와 `.png` 확장자를 확인한 뒤 파일을 저장한다.
-8. SVG 저장 또는 이미지 복사는 후속 PR에서 Tauri command를 통해 실행한다.
+8. SVG 저장 시 UI가 Tauri file save dialog로 저장 경로를 받는다.
+9. UI가 현재 QR SVG를 SVG text로 직렬화한다.
+10. UI가 `save_qr_code_svg` command에 경로와 SVG text를 전달한다.
+11. Rust command가 SVG 형태와 `.svg` 확장자를 확인한 뒤 파일을 저장한다.
+12. 이미지 복사는 후속 PR에서 Tauri command를 통해 실행한다.
 
 ## 기능 추가 방식
 

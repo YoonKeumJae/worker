@@ -1,23 +1,28 @@
 import { useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { saveQrCodePng } from "./qrCodePng";
+import { saveQrCodeSvg } from "./qrCodeSvg";
 import { validateQrCodeUrl } from "./qrCodeValidation";
 
 const qrPreviewSize = 232;
-type PngSaveStatus = "idle" | "saving" | "saved" | "cancelled" | "failed";
+type SaveFormat = "PNG" | "SVG";
+type SaveStatusPhase = "saving" | "saved" | "cancelled" | "failed";
+type SaveStatus = {
+  format: SaveFormat;
+  phase: SaveStatusPhase;
+} | null;
 
-const pngSaveStatusMessage: Record<PngSaveStatus, string | null> = {
-  idle: null,
-  saving: "PNG 저장 중...",
-  saved: "PNG 저장 완료.",
-  cancelled: "PNG 저장 취소.",
-  failed: "PNG 저장 실패. 다시 시도하세요.",
+const saveStatusMessage: Record<SaveStatusPhase, (format: SaveFormat) => string> = {
+  saving: (format) => `${format} 저장 중...`,
+  saved: (format) => `${format} 저장 완료.`,
+  cancelled: (format) => `${format} 저장 취소.`,
+  failed: (format) => `${format} 저장 실패. 다시 시도하세요.`,
 };
 
 export function QrCodeTool() {
   const [urlInput, setUrlInput] = useState("");
   const [hasVisitedUrlInput, setHasVisitedUrlInput] = useState(false);
-  const [pngSaveStatus, setPngSaveStatus] = useState<PngSaveStatus>("idle");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>(null);
   const qrPreviewSurfaceRef = useRef<HTMLDivElement>(null);
 
   // validation은 순수 함수로 분리해 UI와 도메인 규칙을 분리한다.
@@ -34,34 +39,44 @@ export function QrCodeTool() {
   const inputDescriptionId = shouldShowError
     ? "qr-code-url-error"
     : "qr-code-url-hint";
-  const canSavePng = validationResult.isValid && pngSaveStatus !== "saving";
-  const pngSaveMessage = pngSaveStatusMessage[pngSaveStatus];
+  const isSaving = saveStatus?.phase === "saving";
+  const canSave = validationResult.isValid && !isSaving;
+  const currentSaveMessage =
+    saveStatus === null
+      ? null
+      : saveStatusMessage[saveStatus.phase](saveStatus.format);
 
-  async function handleSavePng() {
-    if (!validationResult.isValid || pngSaveStatus === "saving") {
+  async function handleSave(format: SaveFormat) {
+    if (!validationResult.isValid || isSaving) {
       return;
     }
 
     const svgElement = qrPreviewSurfaceRef.current?.querySelector("svg");
 
     if (!(svgElement instanceof SVGSVGElement)) {
-      setPngSaveStatus("failed");
+      setSaveStatus({ format, phase: "failed" });
       return;
     }
 
-    setPngSaveStatus("saving");
+    setSaveStatus({ format, phase: "saving" });
 
     try {
-      const result = await saveQrCodePng(validationResult.value, svgElement);
-      setPngSaveStatus(result.status === "saved" ? "saved" : "cancelled");
+      const result =
+        format === "PNG"
+          ? await saveQrCodePng(validationResult.value, svgElement)
+          : await saveQrCodeSvg(validationResult.value, svgElement);
+      setSaveStatus({
+        format,
+        phase: result.status === "saved" ? "saved" : "cancelled",
+      });
     } catch {
-      setPngSaveStatus("failed");
+      setSaveStatus({ format, phase: "failed" });
     }
   }
 
   function handleUrlInputChange(nextUrlInput: string) {
     setUrlInput(nextUrlInput);
-    setPngSaveStatus("idle");
+    setSaveStatus(null);
   }
 
   return (
@@ -135,19 +150,27 @@ export function QrCodeTool() {
           <button
             className="primary-action"
             type="button"
-            disabled={!canSavePng}
-            onClick={handleSavePng}
+            disabled={!canSave}
+            onClick={() => void handleSave("PNG")}
           >
             PNG 저장
           </button>
+          <button
+            className="secondary-action"
+            type="button"
+            disabled={!canSave}
+            onClick={() => void handleSave("SVG")}
+          >
+            SVG 저장
+          </button>
         </div>
 
-        {pngSaveMessage !== null ? (
+        {currentSaveMessage !== null && saveStatus !== null ? (
           <p
-            className={`qr-save-status qr-save-status-${pngSaveStatus}`}
-            role={pngSaveStatus === "failed" ? "alert" : "status"}
+            className={`qr-save-status qr-save-status-${saveStatus.phase}`}
+            role={saveStatus.phase === "failed" ? "alert" : "status"}
           >
-            {pngSaveMessage}
+            {currentSaveMessage}
           </p>
         ) : null}
       </section>
