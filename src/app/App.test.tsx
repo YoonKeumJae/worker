@@ -1,16 +1,26 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { saveQrCodePng } from "../tools/qr-code/qrCodePng";
 import { maxQrCodeUrlByteLength } from "../tools/qr-code/qrCodeValidation";
 import { App } from "./App";
 
+vi.mock("../tools/qr-code/qrCodePng", () => ({
+  saveQrCodePng: vi.fn(),
+}));
+
 describe("App", () => {
+  beforeEach(() => {
+    vi.mocked(saveQrCodePng).mockReset();
+  });
+
   it("renders the QR code tool", () => {
     render(<App />);
 
     expect(screen.getByRole("heading", { name: "QR코드" })).toBeInTheDocument();
     expect(screen.getByLabelText("URL")).toBeInTheDocument();
     expect(screen.getByText("URL 입력 후 QR코드 표시")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "PNG 저장" })).toBeDisabled();
   });
 
   it("shows a validation error for unsupported URL input", async () => {
@@ -46,6 +56,7 @@ describe("App", () => {
       screen.getByRole("img", { name: "입력한 URL의 QR코드 미리보기" }),
     ).toBeInTheDocument();
     expect(screen.getByText("생성됨")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "PNG 저장" })).toBeEnabled();
   });
 
   it("shows a validation error instead of rendering an oversized QR payload", async () => {
@@ -63,5 +74,54 @@ describe("App", () => {
     expect(
       screen.queryByRole("img", { name: "입력한 URL의 QR코드 미리보기" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows a success status after saving PNG", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveQrCodePng).mockResolvedValue({ status: "saved" });
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "https://example.com/path");
+    await user.click(screen.getByRole("button", { name: "PNG 저장" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("PNG 저장 완료.");
+  });
+
+  it("shows a cancelled status when PNG save dialog is cancelled", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveQrCodePng).mockResolvedValue({ status: "cancelled" });
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "https://example.com/path");
+    await user.click(screen.getByRole("button", { name: "PNG 저장" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("PNG 저장 취소.");
+  });
+
+  it("shows a failure status when PNG save fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveQrCodePng).mockRejectedValue(new Error("write failed"));
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "https://example.com/path");
+    await user.click(screen.getByRole("button", { name: "PNG 저장" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "PNG 저장 실패. 다시 시도하세요.",
+    );
+  });
+
+  it("clears PNG save status when URL input changes", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveQrCodePng).mockResolvedValue({ status: "saved" });
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "https://example.com/path");
+    await user.click(screen.getByRole("button", { name: "PNG 저장" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("PNG 저장 완료.");
+
+    await user.type(screen.getByLabelText("URL"), "?next=1");
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });
