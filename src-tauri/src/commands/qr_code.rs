@@ -11,7 +11,11 @@ pub fn save_qr_code_png(path: String, png_bytes: Vec<u8>) -> Result<(), String> 
 
     let output_path = PathBuf::from(path);
 
-    if output_path.extension().and_then(|extension| extension.to_str()) != Some("png") {
+    if !output_path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
+    {
         return Err("PNG 파일 경로를 선택하세요.".to_string());
     }
 
@@ -27,12 +31,27 @@ mod tests {
         vec![137, 80, 78, 71, 13, 10, 26, 10, 0]
     }
 
+    fn temp_png_path(test_name: &str, extension: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "worker-qr-code-{test_name}-{}.{extension}",
+            std::process::id()
+        ))
+    }
+
     #[test]
     fn saves_png_bytes_to_selected_path() {
-        let path = std::env::temp_dir().join(format!(
-            "worker-qr-code-test-{}.png",
-            std::process::id()
-        ));
+        let path = temp_png_path("lowercase", "png");
+
+        save_qr_code_png(path.to_string_lossy().to_string(), valid_png_bytes()).unwrap();
+
+        assert_eq!(fs::read(&path).unwrap(), valid_png_bytes());
+
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn accepts_uppercase_png_extension() {
+        let path = temp_png_path("uppercase", "PNG");
 
         save_qr_code_png(path.to_string_lossy().to_string(), valid_png_bytes()).unwrap();
 

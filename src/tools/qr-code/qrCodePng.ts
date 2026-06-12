@@ -11,8 +11,8 @@ export type SaveQrCodePngResult =
 
 export type SaveQrCodePngDeps = {
   openSaveDialog: (defaultPath: string) => Promise<string | null>;
-  renderPngBytes: (svgElement: SVGSVGElement) => Promise<number[]>;
-  writePngFile: (path: string, pngBytes: number[]) => Promise<void>;
+  renderPngBytes: (svgElement: SVGSVGElement) => Promise<Uint8Array>;
+  writePngFile: (path: string, pngBytes: Uint8Array) => Promise<void>;
 };
 
 export function createQrCodePngFileName(urlValue: string): string {
@@ -44,7 +44,7 @@ export async function saveQrCodePng(
 
 export async function renderQrSvgToPngBytes(
   svgElement: SVGSVGElement,
-): Promise<number[]> {
+): Promise<Uint8Array> {
   const serializedSvg = new XMLSerializer().serializeToString(svgElement);
   const svgBlob = new Blob([serializedSvg], {
     type: "image/svg+xml;charset=utf-8",
@@ -69,7 +69,7 @@ export async function renderQrSvgToPngBytes(
     context.drawImage(image, 0, 0, size, size);
 
     const pngBlob = await canvasToPngBlob(canvas);
-    return Array.from(new Uint8Array(await pngBlob.arrayBuffer()));
+    return new Uint8Array(await pngBlob.arrayBuffer());
   } finally {
     URL.revokeObjectURL(objectUrl);
   }

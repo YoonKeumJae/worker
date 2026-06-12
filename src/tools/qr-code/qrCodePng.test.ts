@@ -22,9 +22,10 @@ describe("saveQrCodePng", () => {
   );
 
   it("writes rendered PNG bytes when a save path is selected", async () => {
+    const pngBytes = new Uint8Array([137, 80, 78, 71]);
     const deps = {
       openSaveDialog: vi.fn().mockResolvedValue("/tmp/qr-example.com.png"),
-      renderPngBytes: vi.fn().mockResolvedValue([137, 80, 78, 71]),
+      renderPngBytes: vi.fn().mockResolvedValue(pngBytes),
       writePngFile: vi.fn().mockResolvedValue(undefined),
     };
 
@@ -36,15 +37,16 @@ describe("saveQrCodePng", () => {
 
     expect(deps.openSaveDialog).toHaveBeenCalledWith("qr-example.com.png");
     expect(deps.renderPngBytes).toHaveBeenCalledWith(svgElement);
-    expect(deps.writePngFile).toHaveBeenCalledWith("/tmp/qr-example.com.png", [
-      137, 80, 78, 71,
-    ]);
+    expect(deps.writePngFile).toHaveBeenCalledWith(
+      "/tmp/qr-example.com.png",
+      pngBytes,
+    );
   });
 
   it("returns cancelled without rendering or writing when dialog is cancelled", async () => {
     const deps = {
       openSaveDialog: vi.fn().mockResolvedValue(null),
-      renderPngBytes: vi.fn().mockResolvedValue([137, 80, 78, 71]),
+      renderPngBytes: vi.fn().mockResolvedValue(new Uint8Array([137, 80, 78, 71])),
       writePngFile: vi.fn().mockResolvedValue(undefined),
     };
 
