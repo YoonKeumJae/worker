@@ -244,23 +244,26 @@ select {
   outline-offset: 2px;
 }
 
-.qr-save-status {
+.qr-action-status {
   min-height: 20px;
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
 }
 
-.qr-save-status-saved {
+.qr-action-status-saved,
+.qr-action-status-copied {
   color: #167c3a;
 }
 
-.qr-save-status-cancelled,
-.qr-save-status-saving {
+.qr-action-status-cancelled,
+.qr-action-status-saving,
+.qr-action-status-copying {
   color: #515154;
 }
 
-.qr-save-status-failed {
+.qr-action-status-failed,
+.qr-action-status-unsupported {
   color: #b42318;
 }
 

@@ -104,9 +104,11 @@ src/
       qrCodeValidation.ts
 ```
 
-현재 QR tool module은 URL 입력, URL validation, QR 미리보기, PNG/SVG 저장을 포함한다. 이미지 클립보드 복사 command는 후속 작업에서 추가한다.
+현재 QR tool module은 URL 입력, URL validation, QR 미리보기, PNG/SVG 저장, 이미지 클립보드 복사를 포함한다.
 PNG 저장은 `src/tools/qr-code/qrCodePng.ts`에서 save dialog 호출, SVG-to-PNG 변환, Rust command 호출을 조율한다.
 SVG 저장은 `src/tools/qr-code/qrCodeSvg.ts`에서 save dialog 호출, SVG 직렬화, Rust command 호출을 조율한다.
+이미지 클립보드 복사는 `src/tools/qr-code/qrCodeClipboard.ts`에서 SVG-to-PNG 변환과 Rust command 호출을 조율한다.
+SVG-to-PNG 변환은 `src/tools/qr-code/qrCodeImage.ts`에 분리해 PNG 저장과 이미지 복사가 공유한다.
 
 ### Tauri/Rust 레이어
 
@@ -131,6 +133,7 @@ src-tauri/
 현재 Rust 레이어는 Tauri 앱 실행 엔트리만 가진다. `src-tauri/src/commands/`와 `src-tauri/src/tools/`는 후속 도구별 Rust 구현을 위한 자리다.
 현재 Rust 레이어는 `save_qr_code_png` command로 UI가 전달한 PNG bytes를 사용자가 선택한 `.png` 경로에 저장한다.
 `save_qr_code_svg` command는 UI가 전달한 SVG text를 사용자가 선택한 `.svg` 경로에 저장한다.
+`copy_qr_code_image` command는 UI가 전달한 PNG bytes를 OS 이미지 클립보드에 저장한다.
 
 ## 데이터 흐름
 
@@ -147,7 +150,10 @@ QR코드 생성 첫 버전 흐름:
 9. UI가 현재 QR SVG를 SVG text로 직렬화한다.
 10. UI가 `save_qr_code_svg` command에 경로와 SVG text를 전달한다.
 11. Rust command가 SVG 형태와 `.svg` 확장자를 확인한 뒤 파일을 저장한다.
-12. 이미지 복사는 후속 PR에서 Tauri command를 통해 실행한다.
+12. 이미지 복사 시 UI가 현재 QR SVG를 PNG bytes로 변환한다.
+13. UI가 `copy_qr_code_image` command에 PNG bytes를 전달한다.
+14. Rust command가 PNG signature와 PNG decode 가능 여부를 확인한 뒤 OS 이미지 클립보드에 저장한다.
+15. clipboard backend를 열 수 없으면 지원되지 않는 환경 상태를 반환하고, 복사 실패는 오류로 반환한다.
 
 ## 기능 추가 방식
 
@@ -201,4 +207,4 @@ QR코드 생성 첫 버전 흐름:
 
 ## 미정 사항
 
-- 클립보드 이미지를 UI 또는 Rust 어느 쪽에서 처리할지 구현 검증 후 확정한다.
+- 없음
