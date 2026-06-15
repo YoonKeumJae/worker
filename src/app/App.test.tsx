@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { copyQrCodeImage } from "../tools/qr-code/qrCodeClipboard";
 import { saveQrCodePng } from "../tools/qr-code/qrCodePng";
 import { saveQrCodeSvg } from "../tools/qr-code/qrCodeSvg";
 import { maxQrCodeUrlByteLength } from "../tools/qr-code/qrCodeValidation";
@@ -10,12 +11,17 @@ vi.mock("../tools/qr-code/qrCodePng", () => ({
   saveQrCodePng: vi.fn(),
 }));
 
+vi.mock("../tools/qr-code/qrCodeClipboard", () => ({
+  copyQrCodeImage: vi.fn(),
+}));
+
 vi.mock("../tools/qr-code/qrCodeSvg", () => ({
   saveQrCodeSvg: vi.fn(),
 }));
 
 describe("App", () => {
   beforeEach(() => {
+    vi.mocked(copyQrCodeImage).mockReset();
     vi.mocked(saveQrCodePng).mockReset();
     vi.mocked(saveQrCodeSvg).mockReset();
   });
@@ -28,6 +34,7 @@ describe("App", () => {
     expect(screen.getByText("URL 입력 후 QR코드 표시")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "PNG 저장" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "SVG 저장" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "이미지 복사" })).toBeDisabled();
   });
 
   it("shows a validation error for unsupported URL input", async () => {
@@ -65,6 +72,7 @@ describe("App", () => {
     expect(screen.getByText("생성됨")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "PNG 저장" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "SVG 저장" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "이미지 복사" })).toBeEnabled();
   });
 
   it("shows a validation error instead of rendering an oversized QR payload", async () => {
@@ -180,5 +188,42 @@ describe("App", () => {
     await user.type(screen.getByLabelText("URL"), "?next=1");
 
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("shows a success status after copying QR image", async () => {
+    const user = userEvent.setup();
+    vi.mocked(copyQrCodeImage).mockResolvedValue({ status: "copied" });
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "https://example.com/path");
+    await user.click(screen.getByRole("button", { name: "이미지 복사" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("복사 완료.");
+  });
+
+  it("shows an unsupported status when image clipboard is unavailable", async () => {
+    const user = userEvent.setup();
+    vi.mocked(copyQrCodeImage).mockResolvedValue({ status: "unsupported" });
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "https://example.com/path");
+    await user.click(screen.getByRole("button", { name: "이미지 복사" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "이미지 복사를 지원하지 않는 환경입니다.",
+    );
+  });
+
+  it("shows a failure status when image copy fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(copyQrCodeImage).mockRejectedValue(new Error("clipboard failed"));
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "https://example.com/path");
+    await user.click(screen.getByRole("button", { name: "이미지 복사" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "이미지 복사 실패. 다시 시도하세요.",
+    );
   });
 });

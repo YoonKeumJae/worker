@@ -1,3 +1,6 @@
+use arboard::{Clipboard, ImageData};
+use serde::Serialize;
+use std::borrow::Cow;
 use std::fs;
 use std::path::PathBuf;
 
@@ -41,9 +44,60 @@ pub fn save_qr_code_svg(path: String, svg_text: String) -> Result<(), String> {
     fs::write(&output_path, svg_text).map_err(|error| format!("SVG 저장 실패: {error}"))
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyQrCodeImageResult {
+    status: CopyQrCodeImageStatus,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+enum CopyQrCodeImageStatus {
+    Copied,
+    Unsupported,
+}
+
+#[tauri::command]
+pub fn copy_qr_code_image(png_bytes: Vec<u8>) -> Result<CopyQrCodeImageResult, String> {
+    let image_data = png_bytes_to_clipboard_image(&png_bytes)?;
+    let mut clipboard = match Clipboard::new() {
+        Ok(clipboard) => clipboard,
+        Err(_) => {
+            return Ok(CopyQrCodeImageResult {
+                status: CopyQrCodeImageStatus::Unsupported,
+            });
+        }
+    };
+
+    clipboard
+        .set_image(image_data)
+        .map_err(|error| format!("이미지 복사 실패: {error}"))?;
+
+    Ok(CopyQrCodeImageResult {
+        status: CopyQrCodeImageStatus::Copied,
+    })
+}
+
+fn png_bytes_to_clipboard_image(png_bytes: &[u8]) -> Result<ImageData<'static>, String> {
+    if png_bytes.len() < PNG_SIGNATURE.len() || png_bytes[..PNG_SIGNATURE.len()] != PNG_SIGNATURE {
+        return Err("PNG 데이터가 올바르지 않습니다.".to_string());
+    }
+
+    let decoded_image = image::load_from_memory_with_format(png_bytes, image::ImageFormat::Png)
+        .map_err(|error| format!("PNG 이미지 해석 실패: {error}"))?
+        .to_rgba8();
+    let (width, height) = decoded_image.dimensions();
+
+    Ok(ImageData {
+        width: width as usize,
+        height: height as usize,
+        bytes: Cow::Owned(decoded_image.into_raw()),
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{save_qr_code_png, save_qr_code_svg};
+    use super::{png_bytes_to_clipboard_image, save_qr_code_png, save_qr_code_svg};
     use std::fs;
 
     fn valid_png_bytes() -> Vec<u8> {
@@ -62,6 +116,18 @@ mod tests {
             "worker-qr-code-{test_name}-{}.{extension}",
             std::process::id()
         ))
+    }
+
+    fn valid_decodable_png_bytes() -> Vec<u8> {
+        use image::codecs::png::PngEncoder;
+        use image::ImageEncoder;
+
+        let mut bytes = Vec::new();
+        let rgba_bytes = [255, 255, 255, 255];
+        PngEncoder::new(&mut bytes)
+            .write_image(&rgba_bytes, 1, 1, image::ColorType::Rgba8.into())
+            .unwrap();
+        bytes
     }
 
     #[test]
@@ -139,5 +205,21 @@ mod tests {
         );
 
         assert_eq!(result, Err("SVG 파일 경로를 선택하세요.".to_string()));
+    }
+
+    #[test]
+    fn decodes_png_bytes_for_clipboard_image() {
+        let image_data = png_bytes_to_clipboard_image(&valid_decodable_png_bytes()).unwrap();
+
+        assert_eq!(image_data.width, 1);
+        assert_eq!(image_data.height, 1);
+        assert_eq!(image_data.bytes.len(), 4);
+    }
+
+    #[test]
+    fn rejects_non_png_clipboard_bytes() {
+        let result = png_bytes_to_clipboard_image(&[1, 2, 3]);
+
+        assert_eq!(result.unwrap_err(), "PNG 데이터가 올바르지 않습니다.");
     }
 }

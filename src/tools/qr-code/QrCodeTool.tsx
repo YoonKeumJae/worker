@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { copyQrCodeImage } from "./qrCodeClipboard";
 import { saveQrCodePng } from "./qrCodePng";
 import { saveQrCodeSvg } from "./qrCodeSvg";
 import { validateQrCodeUrl } from "./qrCodeValidation";
@@ -7,22 +8,38 @@ import { validateQrCodeUrl } from "./qrCodeValidation";
 const qrPreviewSize = 232;
 type SaveFormat = "PNG" | "SVG";
 type SaveStatusPhase = "saving" | "saved" | "cancelled" | "failed";
+type CopyStatusPhase = "copying" | "copied" | "unsupported" | "failed";
 type SaveStatus = {
   format: SaveFormat;
   phase: SaveStatusPhase;
-} | null;
+};
+type CopyStatus = {
+  format: "COPY";
+  phase: CopyStatusPhase;
+};
+type ActionStatus = SaveStatus | CopyStatus | null;
 
-const saveStatusMessage: Record<SaveStatusPhase, (format: SaveFormat) => string> = {
+const saveStatusMessage: Record<
+  SaveStatusPhase,
+  (format: SaveFormat) => string
+> = {
   saving: (format) => `${format} 저장 중...`,
   saved: (format) => `${format} 저장 완료.`,
   cancelled: (format) => `${format} 저장 취소.`,
   failed: (format) => `${format} 저장 실패. 다시 시도하세요.`,
 };
 
+const copyStatusMessage: Record<CopyStatusPhase, string> = {
+  copying: "이미지 복사 중...",
+  copied: "복사 완료.",
+  unsupported: "이미지 복사를 지원하지 않는 환경입니다.",
+  failed: "이미지 복사 실패. 다시 시도하세요.",
+};
+
 export function QrCodeTool() {
   const [urlInput, setUrlInput] = useState("");
   const [hasVisitedUrlInput, setHasVisitedUrlInput] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>(null);
+  const [actionStatus, setActionStatus] = useState<ActionStatus>(null);
   const qrPreviewSurfaceRef = useRef<HTMLDivElement>(null);
 
   // validation은 순수 함수로 분리해 UI와 도메인 규칙을 분리한다.
@@ -39,44 +56,76 @@ export function QrCodeTool() {
   const inputDescriptionId = shouldShowError
     ? "qr-code-url-error"
     : "qr-code-url-hint";
-  const isSaving = saveStatus?.phase === "saving";
-  const canSave = validationResult.isValid && !isSaving;
-  const currentSaveMessage =
-    saveStatus === null
+  const isProcessing =
+    actionStatus?.phase === "saving" || actionStatus?.phase === "copying";
+  const canRunAction = validationResult.isValid && !isProcessing;
+  const currentActionMessage =
+    actionStatus === null
       ? null
-      : saveStatusMessage[saveStatus.phase](saveStatus.format);
+      : actionStatus.format === "COPY"
+        ? copyStatusMessage[actionStatus.phase]
+        : saveStatusMessage[actionStatus.phase](actionStatus.format);
+  const currentActionRole =
+    actionStatus?.phase === "failed" || actionStatus?.phase === "unsupported"
+      ? "alert"
+      : "status";
 
   async function handleSave(format: SaveFormat) {
-    if (!validationResult.isValid || isSaving) {
+    if (!validationResult.isValid || isProcessing) {
       return;
     }
 
     const svgElement = qrPreviewSurfaceRef.current?.querySelector("svg");
 
     if (!(svgElement instanceof SVGSVGElement)) {
-      setSaveStatus({ format, phase: "failed" });
+      setActionStatus({ format, phase: "failed" });
       return;
     }
 
-    setSaveStatus({ format, phase: "saving" });
+    setActionStatus({ format, phase: "saving" });
 
     try {
       const result =
         format === "PNG"
           ? await saveQrCodePng(validationResult.value, svgElement)
           : await saveQrCodeSvg(validationResult.value, svgElement);
-      setSaveStatus({
+      setActionStatus({
         format,
         phase: result.status === "saved" ? "saved" : "cancelled",
       });
     } catch {
-      setSaveStatus({ format, phase: "failed" });
+      setActionStatus({ format, phase: "failed" });
+    }
+  }
+
+  async function handleCopyImage() {
+    if (!validationResult.isValid || isProcessing) {
+      return;
+    }
+
+    const svgElement = qrPreviewSurfaceRef.current?.querySelector("svg");
+
+    if (!(svgElement instanceof SVGSVGElement)) {
+      setActionStatus({ format: "COPY", phase: "failed" });
+      return;
+    }
+
+    setActionStatus({ format: "COPY", phase: "copying" });
+
+    try {
+      const result = await copyQrCodeImage(svgElement);
+      setActionStatus({
+        format: "COPY",
+        phase: result.status === "copied" ? "copied" : "unsupported",
+      });
+    } catch {
+      setActionStatus({ format: "COPY", phase: "failed" });
     }
   }
 
   function handleUrlInputChange(nextUrlInput: string) {
     setUrlInput(nextUrlInput);
-    setSaveStatus(null);
+    setActionStatus(null);
   }
 
   return (
@@ -150,7 +199,7 @@ export function QrCodeTool() {
           <button
             className="primary-action"
             type="button"
-            disabled={!canSave}
+            disabled={!canRunAction}
             onClick={() => void handleSave("PNG")}
           >
             PNG 저장
@@ -158,19 +207,27 @@ export function QrCodeTool() {
           <button
             className="secondary-action"
             type="button"
-            disabled={!canSave}
+            disabled={!canRunAction}
             onClick={() => void handleSave("SVG")}
           >
             SVG 저장
           </button>
+          <button
+            className="secondary-action"
+            type="button"
+            disabled={!canRunAction}
+            onClick={() => void handleCopyImage()}
+          >
+            이미지 복사
+          </button>
         </div>
 
-        {currentSaveMessage !== null && saveStatus !== null ? (
+        {currentActionMessage !== null && actionStatus !== null ? (
           <p
-            className={`qr-save-status qr-save-status-${saveStatus.phase}`}
-            role={saveStatus.phase === "failed" ? "alert" : "status"}
+            className={`qr-action-status qr-action-status-${actionStatus.phase}`}
+            role={currentActionRole}
           >
-            {currentSaveMessage}
+            {currentActionMessage}
           </p>
         ) : null}
       </section>
