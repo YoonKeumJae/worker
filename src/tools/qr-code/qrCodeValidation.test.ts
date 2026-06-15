@@ -1,8 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
   maxQrCodeUrlByteLength,
+  normalizeQrCodeUrl,
   validateQrCodeUrl,
 } from "./qrCodeValidation";
+
+describe("normalizeQrCodeUrl", () => {
+  it("adds https scheme to domain input without scheme", () => {
+    expect(normalizeQrCodeUrl(" example.com/path ")).toBe(
+      "https://example.com/path",
+    );
+  });
+
+  it("keeps explicit http scheme", () => {
+    expect(normalizeQrCodeUrl("http://example.com")).toBe(
+      "http://example.com/",
+    );
+  });
+});
 
 describe("validateQrCodeUrl", () => {
   it("rejects empty URL input", () => {
@@ -19,14 +34,14 @@ describe("validateQrCodeUrl", () => {
       value: null,
       errorMessage: "유효한 URL을 입력하세요.",
     });
-    expect(validateQrCodeUrl("example.com")).toEqual({
+    expect(validateQrCodeUrl("not a url")).toEqual({
       isValid: false,
       value: null,
       errorMessage: "유효한 URL을 입력하세요.",
     });
   });
 
-  it("accepts http and https URLs", () => {
+  it("accepts http, https, and scheme-free domain URLs", () => {
     expect(validateQrCodeUrl(" https://example.com/path ")).toEqual({
       isValid: true,
       value: "https://example.com/path",
@@ -35,6 +50,11 @@ describe("validateQrCodeUrl", () => {
     expect(validateQrCodeUrl("http://example.com")).toEqual({
       isValid: true,
       value: "http://example.com/",
+      errorMessage: null,
+    });
+    expect(validateQrCodeUrl("example.com")).toEqual({
+      isValid: true,
+      value: "https://example.com/",
       errorMessage: null,
     });
   });
