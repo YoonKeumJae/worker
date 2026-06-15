@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { copyQrCodeImage } from "./qrCodeClipboard";
+import { invoke } from "@tauri-apps/api/core";
+import { copyPngImageToClipboard, copyQrCodeImage } from "./qrCodeClipboard";
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn().mockResolvedValue({ status: "copied" }),
+}));
 
 describe("copyQrCodeImage", () => {
   const svgElement = document.createElementNS(
@@ -32,6 +37,20 @@ describe("copyQrCodeImage", () => {
 
     await expect(copyQrCodeImage(svgElement, deps)).resolves.toEqual({
       status: "unsupported",
+    });
+  });
+});
+
+describe("copyPngImageToClipboard", () => {
+  it("serializes PNG bytes as a plain array for Tauri command arguments", async () => {
+    const pngBytes = new Uint8Array([137, 80, 78, 71]);
+
+    await expect(copyPngImageToClipboard(pngBytes)).resolves.toEqual({
+      status: "copied",
+    });
+
+    expect(invoke).toHaveBeenCalledWith("copy_qr_code_image", {
+      pngBytes: [137, 80, 78, 71],
     });
   });
 });

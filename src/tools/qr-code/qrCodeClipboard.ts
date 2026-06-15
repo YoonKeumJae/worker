@@ -24,10 +24,15 @@ export async function copyQrCodeImage(
   return deps.copyPngImageToClipboard(pngBytes);
 }
 
+export function copyPngImageToClipboard(
+  pngBytes: Uint8Array,
+): Promise<CopyQrCodeImageResult> {
+  return invoke("copy_qr_code_image", {
+    pngBytes: Array.from(pngBytes),
+  });
+}
+
 const defaultCopyQrCodeImageDeps: CopyQrCodeImageDeps = {
   renderPngBytes: renderQrSvgToPngBytes,
-  copyPngImageToClipboard: (pngBytes) =>
-    invoke("copy_qr_code_image", {
-      pngBytes,
-    }),
+  copyPngImageToClipboard: copyPngImageToClipboard,
 };
