@@ -30,18 +30,29 @@ function hasExplicitUrlScheme(urlValue: string): boolean {
   return /^[a-z][a-z0-9+.-]*$/i.test(scheme) && !scheme.includes(".");
 }
 
+function isSupportedHttpHost(hostname: string): boolean {
+  return (
+    hostname.includes(".") ||
+    hostname === "localhost" ||
+    (hostname.startsWith("[") && hostname.endsWith("]"))
+  );
+}
+
 export function normalizeQrCodeUrl(rawUrl: string): string {
   const trimmedUrl = rawUrl.trim();
-  const urlWithScheme = hasExplicitUrlScheme(trimmedUrl)
-    ? trimmedUrl
-    : `https://${trimmedUrl}`;
+  const hasScheme = hasExplicitUrlScheme(trimmedUrl);
+  const urlWithScheme = hasScheme ? trimmedUrl : `https://${trimmedUrl}`;
   const parsedUrl = new URL(urlWithScheme);
 
   if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
     throw new Error("Unsupported URL scheme");
   }
 
-  if (!parsedUrl.hostname.includes(".")) {
+  if (!hasScheme && (parsedUrl.username.length > 0 || parsedUrl.password.length > 0)) {
+    throw new Error("Invalid URL userinfo");
+  }
+
+  if (!isSupportedHttpHost(parsedUrl.hostname)) {
     throw new Error("Invalid URL host");
   }
 

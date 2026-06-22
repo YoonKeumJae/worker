@@ -17,6 +17,19 @@ describe("normalizeQrCodeUrl", () => {
       "http://example.com/",
     );
   });
+
+  it("keeps explicit localhost and IPv6 loopback URLs", () => {
+    expect(normalizeQrCodeUrl("http://localhost:3000")).toBe(
+      "http://localhost:3000/",
+    );
+    expect(normalizeQrCodeUrl("http://[::1]:5173")).toBe(
+      "http://[::1]:5173/",
+    );
+  });
+
+  it("rejects scheme-free inputs that become URL userinfo", () => {
+    expect(() => normalizeQrCodeUrl("example.com@evil.com")).toThrow();
+  });
 });
 
 describe("validateQrCodeUrl", () => {
@@ -56,6 +69,27 @@ describe("validateQrCodeUrl", () => {
       isValid: true,
       value: "https://example.com/",
       errorMessage: null,
+    });
+  });
+
+  it("accepts local development server URLs", () => {
+    expect(validateQrCodeUrl("http://localhost:3000")).toEqual({
+      isValid: true,
+      value: "http://localhost:3000/",
+      errorMessage: null,
+    });
+    expect(validateQrCodeUrl("http://[::1]:5173")).toEqual({
+      isValid: true,
+      value: "http://[::1]:5173/",
+      errorMessage: null,
+    });
+  });
+
+  it("rejects scheme-free URL input with userinfo", () => {
+    expect(validateQrCodeUrl("example.com@evil.com")).toEqual({
+      isValid: false,
+      value: null,
+      errorMessage: "유효한 URL을 입력하세요.",
     });
   });
 
