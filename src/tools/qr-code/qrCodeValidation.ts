@@ -26,16 +26,34 @@ function hasExplicitUrlScheme(urlValue: string): boolean {
   }
 
   const scheme = urlValue.slice(0, colonIndex);
+  const valueAfterColon = urlValue.slice(colonIndex + 1);
+
+  if (
+    scheme.toLowerCase() === "localhost" &&
+    /^\d+(?:[/?#].*)?$/.test(valueAfterColon)
+  ) {
+    return false;
+  }
 
   return /^[a-z][a-z0-9+.-]*$/i.test(scheme) && !scheme.includes(".");
 }
 
-function isSupportedHttpHost(hostname: string): boolean {
-  return (
-    hostname.includes(".") ||
-    hostname === "localhost" ||
-    (hostname.startsWith("[") && hostname.endsWith("]"))
-  );
+function isValidSchemeFreeHost(hostname: string): boolean {
+  if (hostname === "localhost") {
+    return true;
+  }
+
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    return true;
+  }
+
+  if (!hostname.includes(".")) {
+    return false;
+  }
+
+  return hostname.split(".").every((label) => {
+    return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label);
+  });
 }
 
 export function normalizeQrCodeUrl(rawUrl: string): string {
@@ -48,11 +66,14 @@ export function normalizeQrCodeUrl(rawUrl: string): string {
     throw new Error("Unsupported URL scheme");
   }
 
-  if (!hasScheme && (parsedUrl.username.length > 0 || parsedUrl.password.length > 0)) {
+  if (
+    !hasScheme &&
+    (parsedUrl.username.length > 0 || parsedUrl.password.length > 0)
+  ) {
     throw new Error("Invalid URL userinfo");
   }
 
-  if (!isSupportedHttpHost(parsedUrl.hostname)) {
+  if (!hasScheme && !isValidSchemeFreeHost(parsedUrl.hostname)) {
     throw new Error("Invalid URL host");
   }
 
