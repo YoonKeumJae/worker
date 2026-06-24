@@ -18,13 +18,15 @@
 ## 예상 명령
 
 ```bash
-pnpm install
-pnpm test
-pnpm build
-pnpm tauri build
+pnpm install --frozen-lockfile
+pnpm run lint
+pnpm run test
+pnpm run build
+pnpm run check:tauri
+pnpm run tauri:build
 ```
 
-실제 명령은 scaffold 후 갱신한다.
+`pnpm run tauri:build`는 macOS 앱 bundle과 DMG를 생성한다.
 
 ## 릴리스 기록
 

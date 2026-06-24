@@ -39,7 +39,11 @@ URL을 QR코드로 변환해 업무 중 빠르게 공유할 수 있게 한다.
 - 빈 값은 허용하지 않는다.
 - `http://` 또는 `https://` URL을 지원한다.
 - scheme 없는 도메인 입력은 `https://`를 붙여 정규화한다.
+- scheme 없는 `localhost:<port>` 입력은 로컬 개발 URL로 보고 `https://`를 붙여 정규화한다.
+- 명시적 `http://` 또는 `https://` URL은 단일 label host, `localhost`, IPv6 loopback을 허용한다.
 - `http://` 입력은 `https://`로 강제 변경하지 않는다.
+- scheme 없는 입력에 userinfo가 포함되면 허용하지 않는다.
+- scheme 없는 host label이 비어 있거나 잘못된 경우 허용하지 않는다.
 - 잘못된 URL은 QR 생성 action을 실행하지 않는다.
 - QR 렌더링 실패를 막기 위해 정규화된 URL은 UTF-8 기준 2,000 bytes를 넘지 않는다.
 - QR payload, PNG/SVG 기본 파일명 host 추출, 이미지 클립보드 복사는 정규화된 URL 기준으로 동작한다.
@@ -60,6 +64,7 @@ URL을 QR코드로 변환해 업무 중 빠르게 공유할 수 있게 한다.
 배경 옵션:
 
 - 기본값은 `흰색`이다.
+- UI 라벨은 `배경`이고, 옵션은 `흰색`, `투명`이다.
 - 사용자는 내보내기 배경을 `흰색` 또는 `투명` 중 선택할 수 있다.
 - PNG 저장, SVG 저장, 이미지 클립보드 복사는 같은 배경 옵션을 사용한다.
 - `투명` 선택 시 QR 검은 모듈은 유지하고 흰 배경만 제거한다.
@@ -126,7 +131,10 @@ SVG 저장:
 - 빈 URL 입력 시 오류 표시
 - 잘못된 URL 입력 시 오류 표시
 - scheme 없는 도메인 입력 시 `https://` 정규화
+- scheme 없는 `localhost:<port>` 입력 시 `https://` 정규화
 - `http://` 입력 시 scheme 유지
+- 명시적 localhost, IPv6 loopback, 단일 label host URL 허용
+- scheme 없는 userinfo와 잘못된 host label 거부
 - QR 용량 제한을 넘는 URL 입력 시 오류 표시
 - 정상 URL 입력 시 QR 미리보기 생성
 - 기본 배경 옵션은 `흰색`

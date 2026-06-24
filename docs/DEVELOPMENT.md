@@ -84,12 +84,6 @@ Tauri 앱 패키징:
 pnpm run tauri:build
 ```
 
-다음 명령도 같은 Tauri build를 실행한다.
-
-```bash
-pnpm tauri build
-```
-
 `tauri:dev`와 `tauri:build`는 Rust stable과 Tauri OS별 prerequisites가 필요하다.
 
 macOS 빌드 산출물:
@@ -126,12 +120,11 @@ QR 기능 첫 버전 확인:
 - URL 입력 검증
 - QR 미리보기 생성
 - 잘못된 URL 오류 표시
-
-QR 기능 후속 확인:
-
 - PNG 저장
 - SVG 저장
 - 이미지 클립보드 복사
+- 배경 옵션 기본값 `흰색`
+- 배경 옵션 `투명` 선택 후 PNG/SVG/클립보드 복사 동작
 
 ## 문서 갱신 기준
 

@@ -47,5 +47,6 @@ docs/
 
 ## 후속 작업
 
-- scaffold 후 `ARCHITECTURE.md`, `DEVELOPMENT.md` 갱신
-- 기능 추가마다 `FEATURES/` 문서 작성 또는 갱신
+- scaffold 후 `ARCHITECTURE.md`, `DEVELOPMENT.md` 갱신 완료
+- QR 기능 상세는 `docs/FEATURES/qr-code.md`에서 관리
+- 기능 추가마다 `FEATURES/` 문서 작성 또는 갱신 유지

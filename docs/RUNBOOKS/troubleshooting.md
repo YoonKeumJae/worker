@@ -48,7 +48,7 @@
 
 ## Tauri 앱 실행이 안 될 때
 
-scaffold 후 아래 항목을 확인한다.
+아래 항목을 확인한다.
 
 - Node.js 버전
 - pnpm 버전
@@ -61,7 +61,13 @@ scaffold 후 아래 항목을 확인한다.
 
 ```bash
 pnpm install
-pnpm tauri dev
+pnpm run tauri:dev
+```
+
+Tauri/Rust 설정만 빠르게 확인하려면 다음을 실행한다.
+
+```bash
+pnpm run check:tauri
 ```
 
 ## CI가 실패할 때
@@ -77,3 +83,19 @@ pnpm tauri dev
 문서 영향:
 
 - 명령이 바뀌면 `README.md`, `docs/DEVELOPMENT.md`, `.github/workflows/ci.yml`을 함께 갱신한다.
+
+## QR 저장 또는 이미지 복사가 실패할 때
+
+확인:
+
+- URL 입력이 유효한지 확인
+- PNG 저장 경로가 `.png` 확장자인지 확인
+- SVG 저장 경로가 `.svg` 확장자인지 확인
+- 이미지 복사 실패 시 OS clipboard backend 사용 가능 여부 확인
+- 투명 배경 선택 시 QR 검은 모듈은 유지되고 흰 배경만 제거되는지 확인
+
+관련 Rust command:
+
+- `save_qr_code_png`
+- `save_qr_code_svg`
+- `copy_qr_code_image`

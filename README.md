@@ -2,7 +2,7 @@
 
 `worker`는 업무 중 반복적으로 필요한 작은 작업들을 로컬에서 처리하는 macOS용 GUI 앱이다.
 
-첫 버전은 URL을 입력받아 QR코드를 생성하는 기능을 목표로 한다. 현재 저장소에는 Tauri 2 기반 앱 scaffold와 QR 미리보기 기능이 준비되어 있다.
+첫 버전은 URL을 입력받아 QR코드를 생성하고, PNG/SVG 파일 저장과 이미지 클립보드 복사를 로컬에서 처리하는 기능을 제공한다.
 
 ## 목표
 
@@ -16,12 +16,10 @@
 - URL 입력
 - URL 형식 검증
 - QR코드 미리보기
-
-후속 구현 범위:
-
 - PNG 파일 저장
 - SVG 파일 저장
 - QR 이미지 클립보드 복사
+- 내보내기 배경 선택: 흰색 또는 투명
 
 ## 향후 기능 후보
 
@@ -56,9 +54,20 @@
 ```text
 src/
   app/
+    App.tsx
+    App.test.tsx
+    styles.css
   components/
+    ToolSidebar.tsx
   tools/
     qr-code/
+      QrCodeTool.tsx
+      qrCodeBackground.ts
+      qrCodeClipboard.ts
+      qrCodeImage.ts
+      qrCodePng.ts
+      qrCodeSvg.ts
+      qrCodeValidation.ts
 public/
   favicon.svg
 src-tauri/
@@ -68,8 +77,10 @@ src-tauri/
   icons/
   src/
     commands/
+      qr_code.rs
     tools/
 .github/workflows/
+  ci.yml
 ```
 
 ## 개발 환경
@@ -108,11 +119,6 @@ pnpm run tauri:dev
 pnpm run lint
 pnpm run test
 pnpm run build
-```
-
-Tauri/Rust 설정 확인:
-
-```bash
 pnpm run check:tauri
 ```
 
