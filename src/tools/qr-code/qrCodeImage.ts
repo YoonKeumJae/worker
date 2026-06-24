@@ -1,7 +1,12 @@
+import type { QrCodeBackground } from "./qrCodeBackground";
+import { defaultQrCodeBackground } from "./qrCodeBackground";
+import { serializeQrCodeSvg } from "./qrCodeSvg";
+
 export async function renderQrSvgToPngBytes(
   svgElement: SVGSVGElement,
+  background: QrCodeBackground = defaultQrCodeBackground,
 ): Promise<Uint8Array> {
-  const serializedSvg = new XMLSerializer().serializeToString(svgElement);
+  const serializedSvg = serializeQrCodeSvg(svgElement, background);
   const svgBlob = new Blob([serializedSvg], {
     type: "image/svg+xml;charset=utf-8",
   });
@@ -20,8 +25,11 @@ export async function renderQrSvgToPngBytes(
       throw new Error("PNG 변환을 시작할 수 없습니다.");
     }
 
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, size, size);
+    if (background === "white") {
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, size, size);
+    }
+
     context.drawImage(image, 0, 0, size, size);
 
     const pngBlob = await canvasToPngBlob(canvas);

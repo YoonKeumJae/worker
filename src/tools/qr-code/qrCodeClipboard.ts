@@ -1,4 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { QrCodeBackground } from "./qrCodeBackground";
+import { defaultQrCodeBackground } from "./qrCodeBackground";
 import { renderQrSvgToPngBytes } from "./qrCodeImage";
 
 export type CopyQrCodeImageResult =
@@ -10,7 +12,10 @@ export type CopyQrCodeImageResult =
     };
 
 export type CopyQrCodeImageDeps = {
-  renderPngBytes: (svgElement: SVGSVGElement) => Promise<Uint8Array>;
+  renderPngBytes: (
+    svgElement: SVGSVGElement,
+    background: QrCodeBackground,
+  ) => Promise<Uint8Array>;
   copyPngImageToClipboard: (
     pngBytes: Uint8Array,
   ) => Promise<CopyQrCodeImageResult>;
@@ -18,9 +23,10 @@ export type CopyQrCodeImageDeps = {
 
 export async function copyQrCodeImage(
   svgElement: SVGSVGElement,
+  background: QrCodeBackground = defaultQrCodeBackground,
   deps: CopyQrCodeImageDeps = defaultCopyQrCodeImageDeps,
 ): Promise<CopyQrCodeImageResult> {
-  const pngBytes = await deps.renderPngBytes(svgElement);
+  const pngBytes = await deps.renderPngBytes(svgElement, background);
   return deps.copyPngImageToClipboard(pngBytes);
 }
 

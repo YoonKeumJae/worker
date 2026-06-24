@@ -104,7 +104,8 @@ src/
       qrCodeValidation.ts
 ```
 
-현재 QR tool module은 URL 입력, URL validation/normalization, QR 미리보기, PNG/SVG 저장, 이미지 클립보드 복사를 포함한다.
+현재 QR tool module은 URL 입력, URL validation/normalization, QR 미리보기, 내보내기 배경 옵션, PNG/SVG 저장, 이미지 클립보드 복사를 포함한다.
+내보내기 배경 옵션 type은 `src/tools/qr-code/qrCodeBackground.ts`에 둔다. 값은 `white`와 `transparent`이고 기본값은 `white`이다.
 PNG 저장은 `src/tools/qr-code/qrCodePng.ts`에서 save dialog 호출, SVG-to-PNG 변환, Rust command 호출을 조율한다.
 SVG 저장은 `src/tools/qr-code/qrCodeSvg.ts`에서 save dialog 호출, SVG 직렬화, Rust command 호출을 조율한다.
 이미지 클립보드 복사는 `src/tools/qr-code/qrCodeClipboard.ts`에서 SVG-to-PNG 변환과 Rust command 호출을 조율한다.
@@ -143,18 +144,19 @@ QR코드 생성 첫 버전 흐름:
 1. 사용자가 URL을 입력한다.
 2. UI가 URL 형식을 검증하고 scheme 없는 도메인은 `https://`를 붙여 정규화한다.
 3. QR 미리보기는 정규화된 URL 기준으로 UI에서 즉시 생성한다.
-4. PNG 저장 시 UI가 Tauri file save dialog로 저장 경로를 받는다.
-5. UI가 현재 QR SVG를 PNG bytes로 변환한다.
-6. UI가 정규화된 URL 기준 기본 파일명을 만들고 `save_qr_code_png` command에 경로와 bytes를 전달한다.
-7. Rust command가 PNG signature와 `.png` 확장자를 확인한 뒤 파일을 저장한다.
-8. SVG 저장 시 UI가 Tauri file save dialog로 저장 경로를 받는다.
-9. UI가 현재 QR SVG를 SVG text로 직렬화한다.
-10. UI가 정규화된 URL 기준 기본 파일명을 만들고 `save_qr_code_svg` command에 경로와 SVG text를 전달한다.
-11. Rust command가 SVG 형태와 `.svg` 확장자를 확인한 뒤 파일을 저장한다.
-12. 이미지 복사 시 UI가 정규화된 URL로 생성된 QR SVG를 PNG bytes로 변환한다.
-13. UI가 `copy_qr_code_image` command에 PNG bytes를 전달한다.
-14. Rust command가 PNG signature와 PNG decode 가능 여부를 확인한 뒤 OS 이미지 클립보드에 저장한다.
-15. clipboard backend를 열 수 없으면 지원되지 않는 환경 상태를 반환하고, 복사 실패는 오류로 반환한다.
+4. 사용자는 내보내기 배경을 `흰색` 또는 `투명` 중 선택한다. 기본값은 `흰색`이다.
+5. PNG 저장 시 UI가 Tauri file save dialog로 저장 경로를 받는다.
+6. UI가 현재 QR SVG와 배경 옵션을 PNG bytes로 변환한다. `white`는 canvas에 `#ffffff`를 채우고, `transparent`는 흰 배경 fill과 SVG 흰 배경 shape를 제거한다.
+7. UI가 정규화된 URL 기준 기본 파일명을 만들고 `save_qr_code_png` command에 경로와 bytes를 전달한다.
+8. Rust command가 PNG signature와 `.png` 확장자를 확인한 뒤 파일을 저장한다.
+9. SVG 저장 시 UI가 Tauri file save dialog로 저장 경로를 받는다.
+10. UI가 현재 QR SVG와 배경 옵션을 SVG text로 직렬화한다. `white`는 기존 흰 배경을 유지하고, `transparent`는 흰 배경 shape를 제거한다.
+11. UI가 정규화된 URL 기준 기본 파일명을 만들고 `save_qr_code_svg` command에 경로와 SVG text를 전달한다.
+12. Rust command가 SVG 형태와 `.svg` 확장자를 확인한 뒤 파일을 저장한다.
+13. 이미지 복사 시 UI가 정규화된 URL로 생성된 QR SVG와 배경 옵션을 PNG bytes로 변환한다.
+14. UI가 `copy_qr_code_image` command에 PNG bytes를 전달한다.
+15. Rust command가 PNG signature와 PNG decode 가능 여부를 확인한 뒤 OS 이미지 클립보드에 저장한다.
+16. clipboard backend를 열 수 없으면 지원되지 않는 환경 상태를 반환하고, 복사 실패는 오류로 반환한다.
 
 ## 기능 추가 방식
 

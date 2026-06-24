@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import type { QrCodeBackground } from "./qrCodeBackground";
+import { defaultQrCodeBackground } from "./qrCodeBackground";
 import { copyQrCodeImage } from "./qrCodeClipboard";
 import { saveQrCodePng } from "./qrCodePng";
 import { saveQrCodeSvg } from "./qrCodeSvg";
@@ -38,6 +40,9 @@ const copyStatusMessage: Record<CopyStatusPhase, string> = {
 
 export function QrCodeTool() {
   const [urlInput, setUrlInput] = useState("");
+  const [background, setBackground] = useState<QrCodeBackground>(
+    defaultQrCodeBackground,
+  );
   const [hasVisitedUrlInput, setHasVisitedUrlInput] = useState(false);
   const [actionStatus, setActionStatus] = useState<ActionStatus>(null);
   const qrPreviewSurfaceRef = useRef<HTMLDivElement>(null);
@@ -87,8 +92,8 @@ export function QrCodeTool() {
     try {
       const result =
         format === "PNG"
-          ? await saveQrCodePng(validationResult.value, svgElement)
-          : await saveQrCodeSvg(validationResult.value, svgElement);
+          ? await saveQrCodePng(validationResult.value, svgElement, background)
+          : await saveQrCodeSvg(validationResult.value, svgElement, background);
       setActionStatus({
         format,
         phase: result.status === "saved" ? "saved" : "cancelled",
@@ -113,7 +118,7 @@ export function QrCodeTool() {
     setActionStatus({ format: "COPY", phase: "copying" });
 
     try {
-      const result = await copyQrCodeImage(svgElement);
+      const result = await copyQrCodeImage(svgElement, background);
       setActionStatus({
         format: "COPY",
         phase: result.status === "copied" ? "copied" : "unsupported",
@@ -162,6 +167,33 @@ export function QrCodeTool() {
             </p>
           )}
         </div>
+
+        <fieldset className="field-group qr-background-options">
+          <legend className="field-label">배경</legend>
+          <label className="radio-option">
+            <input
+              type="radio"
+              name="qr-code-background"
+              value="white"
+              checked={background === "white"}
+              onChange={() => setBackground("white")}
+            />
+            <span>흰색</span>
+          </label>
+          <label className="radio-option">
+            <input
+              type="radio"
+              name="qr-code-background"
+              value="transparent"
+              checked={background === "transparent"}
+              onChange={() => setBackground("transparent")}
+            />
+            <span>투명</span>
+          </label>
+          <p className="field-hint">
+            투명 배경은 어두운 문서에서 판독성이 낮을 수 있습니다.
+          </p>
+        </fieldset>
       </section>
 
       <section className="qr-preview-panel" aria-labelledby="qr-preview-title">

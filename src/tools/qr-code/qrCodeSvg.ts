@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
+import type { QrCodeBackground } from "./qrCodeBackground";
+import { defaultQrCodeBackground } from "./qrCodeBackground";
 
 export type SaveQrCodeSvgResult =
   | {
@@ -11,7 +13,10 @@ export type SaveQrCodeSvgResult =
 
 export type SaveQrCodeSvgDeps = {
   openSaveDialog: (defaultPath: string) => Promise<string | null>;
-  serializeSvg: (svgElement: SVGSVGElement) => string;
+  serializeSvg: (
+    svgElement: SVGSVGElement,
+    background: QrCodeBackground,
+  ) => string;
   writeSvgFile: (path: string, svgText: string) => Promise<void>;
 };
 
@@ -25,13 +30,24 @@ export function createQrCodeSvgFileName(urlValue: string): string {
   return `qr-${hostSlug || "url"}.svg`;
 }
 
-export function serializeQrCodeSvg(svgElement: SVGSVGElement): string {
-  return new XMLSerializer().serializeToString(svgElement);
+export function serializeQrCodeSvg(
+  svgElement: SVGSVGElement,
+  background: QrCodeBackground = defaultQrCodeBackground,
+): string {
+  if (background === "white") {
+    return new XMLSerializer().serializeToString(svgElement);
+  }
+
+  const svgClone = svgElement.cloneNode(true) as SVGSVGElement;
+  removeWhiteBackground(svgClone);
+
+  return new XMLSerializer().serializeToString(svgClone);
 }
 
 export async function saveQrCodeSvg(
   urlValue: string,
   svgElement: SVGSVGElement,
+  background: QrCodeBackground = defaultQrCodeBackground,
   deps: SaveQrCodeSvgDeps = defaultSaveQrCodeSvgDeps,
 ): Promise<SaveQrCodeSvgResult> {
   const selectedPath = await deps.openSaveDialog(createQrCodeSvgFileName(urlValue));
@@ -40,7 +56,7 @@ export async function saveQrCodeSvg(
     return { status: "cancelled" };
   }
 
-  const svgText = deps.serializeSvg(svgElement);
+  const svgText = deps.serializeSvg(svgElement, background);
   await deps.writeSvgFile(selectedPath, svgText);
 
   return { status: "saved" };
@@ -65,3 +81,17 @@ const defaultSaveQrCodeSvgDeps: SaveQrCodeSvgDeps = {
       svgText,
     }),
 };
+
+function removeWhiteBackground(svgElement: SVGSVGElement) {
+  const firstShape = svgElement.querySelector("path, rect");
+
+  if (firstShape === null) {
+    return;
+  }
+
+  const fill = firstShape.getAttribute("fill")?.toLowerCase();
+
+  if (fill === "#ffffff" || fill === "white") {
+    firstShape.remove();
+  }
+}
