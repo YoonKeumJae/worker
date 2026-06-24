@@ -4,6 +4,21 @@
 
 Codex PR 리뷰는 ChatGPT Codex settings에서 repository를 등록해 사용한다.
 
+## CI / Ruleset 기준
+
+- 기본 브랜치: `main`
+- GitHub Actions workflow: `.github/workflows/ci.yml`
+- 필수 check 이름: `Validate`
+- CI 실행 시점: `main` 대상 pull request, `main` push
+- CI 명령:
+  - `pnpm install --frozen-lockfile`
+  - `pnpm run lint`
+  - `pnpm run test`
+  - `pnpm run build`
+  - `pnpm run check:tauri`
+
+`main` 보호 Ruleset에서는 PR 병합 전 `Validate` 통과, conversation resolution, stale approval dismissal, force push 차단, branch 삭제 제한을 사용한다.
+
 ## 설정 절차
 
 1. Codex cloud에서 이 GitHub repository를 연결한다.

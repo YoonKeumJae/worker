@@ -28,11 +28,14 @@ GitHub/PR 작업 전:
 
 ## 문서 역할
 
+- `README.md`: 프로젝트 소개, 현재 구현 범위, 빠른 시작, 검증 명령, 주요 문서 링크
+- `AGENTS.md`: 에이전트 작업 규칙, 커밋/브랜치/리뷰/문서 운영 규칙
 - `PROJECT_SPEC.md`: 제품 목표, 사용자, 범위, 비기능 요구사항
 - `ARCHITECTURE.md`: 앱 구조, 모듈 경계, 데이터 흐름, 확장 방식
 - `DESIGN_PRINCIPLES.md`: UX/UI 원칙, Liquid Glass 적용 기준, 접근성 기준
 - `DEVELOPMENT.md`: 로컬 개발 환경, 설치, 실행, 테스트, 빌드 방법
 - `GITHUB_SETTINGS.md`: GitHub Rulesets, Codex 리뷰, Copilot 리뷰 설정
+- `.github/pull_request_template.md`: PR 설명, 테스트, 화면 확인, 보안/배포 영향 체크리스트
 - `DECISIONS/`: 기술 선택과 중요한 의사결정 기록
 - `FEATURES/`: 기능별 상세 명세
 - `PLANS/`: 구현 전 작업 계획과 체크리스트

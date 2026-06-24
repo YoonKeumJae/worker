@@ -13,7 +13,7 @@
 - 로컬 작업 엔진: Rust
 - 패키지 매니저: pnpm
 
-현재 scaffold 구조:
+현재 구조:
 
 ```text
 src/
@@ -27,6 +27,15 @@ src/
   tools/
     qr-code/
       QrCodeTool.tsx
+      qrCodeBackground.ts
+      qrCodeClipboard.ts
+      qrCodeClipboard.test.ts
+      qrCodeImage.ts
+      qrCodeImage.test.ts
+      qrCodePng.ts
+      qrCodePng.test.ts
+      qrCodeSvg.ts
+      qrCodeSvg.test.ts
       qrCodeValidation.ts
       qrCodeValidation.test.ts
 public/
@@ -49,8 +58,13 @@ src-tauri/
     lib.rs
     commands/
       mod.rs
+      qr_code.rs
     tools/
       mod.rs
+.github/
+  workflows/
+    ci.yml
+  pull_request_template.md
 ```
 
 ## 레이어
@@ -99,6 +113,9 @@ src/
   tools/
     qr-code/
       QrCodeTool.tsx
+      qrCodeBackground.ts
+      qrCodeClipboard.ts
+      qrCodeImage.ts
       qrCodePng.ts
       qrCodeSvg.ts
       qrCodeValidation.ts
@@ -132,10 +149,12 @@ src-tauri/
       qr_code.rs
 ```
 
-현재 Rust 레이어는 Tauri 앱 실행 엔트리만 가진다. `src-tauri/src/commands/`와 `src-tauri/src/tools/`는 후속 도구별 Rust 구현을 위한 자리다.
 현재 Rust 레이어는 `save_qr_code_png` command로 UI가 전달한 PNG bytes를 사용자가 선택한 `.png` 경로에 저장한다.
 `save_qr_code_svg` command는 UI가 전달한 SVG text를 사용자가 선택한 `.svg` 경로에 저장한다.
 `copy_qr_code_image` command는 UI가 전달한 PNG bytes를 OS 이미지 클립보드에 저장한다.
+Rust command는 PNG signature, PNG decode 가능 여부, SVG 시작 형태, 파일 확장자를 검증한다.
+
+현재 Tauri capability는 `core:default`, `opener:default`, `dialog:default`를 허용한다. 파일 저장은 사용자가 선택한 경로를 Rust command에 전달하는 방식으로 처리한다.
 
 ## 데이터 흐름
 

@@ -80,7 +80,8 @@ UI는 React/TypeScript로 구성하고, 파일 저장과 OS 기능은 Rust/Tauri
 
 ## 후속 작업
 
-- Tauri scaffold 생성
-- 실제 package scripts 확정
-- QR 생성 라이브러리 검토
-- 클립보드 이미지 처리 방식 검증
+- Tauri scaffold 생성 완료
+- 실제 package scripts 확정 완료
+- QR 생성 라이브러리는 `qrcode.react`로 확정
+- 클립보드 이미지 처리는 Rust `arboard` 기반으로 구현
+- PNG decode 검증은 Rust `image` crate로 구현
