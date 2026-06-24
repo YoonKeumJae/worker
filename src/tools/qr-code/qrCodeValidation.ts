@@ -12,6 +12,74 @@ export type QrCodeUrlValidationResult =
 
 export const maxQrCodeUrlByteLength = 2_000;
 
+function hasExplicitUrlScheme(urlValue: string): boolean {
+  const colonIndex = urlValue.indexOf(":");
+
+  if (colonIndex < 0) {
+    return false;
+  }
+
+  const firstPathMarkerIndex = urlValue.search(/[/?#]/);
+
+  if (firstPathMarkerIndex >= 0 && firstPathMarkerIndex < colonIndex) {
+    return false;
+  }
+
+  const scheme = urlValue.slice(0, colonIndex);
+  const valueAfterColon = urlValue.slice(colonIndex + 1);
+
+  if (
+    scheme.toLowerCase() === "localhost" &&
+    /^\d+(?:[/?#].*)?$/.test(valueAfterColon)
+  ) {
+    return false;
+  }
+
+  return /^[a-z][a-z0-9+.-]*$/i.test(scheme) && !scheme.includes(".");
+}
+
+function isValidSchemeFreeHost(hostname: string): boolean {
+  if (hostname === "localhost") {
+    return true;
+  }
+
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    return true;
+  }
+
+  if (!hostname.includes(".")) {
+    return false;
+  }
+
+  return hostname.split(".").every((label) => {
+    return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label);
+  });
+}
+
+export function normalizeQrCodeUrl(rawUrl: string): string {
+  const trimmedUrl = rawUrl.trim();
+  const hasScheme = hasExplicitUrlScheme(trimmedUrl);
+  const urlWithScheme = hasScheme ? trimmedUrl : `https://${trimmedUrl}`;
+  const parsedUrl = new URL(urlWithScheme);
+
+  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+    throw new Error("Unsupported URL scheme");
+  }
+
+  if (
+    !hasScheme &&
+    (parsedUrl.username.length > 0 || parsedUrl.password.length > 0)
+  ) {
+    throw new Error("Invalid URL userinfo");
+  }
+
+  if (!hasScheme && !isValidSchemeFreeHost(parsedUrl.hostname)) {
+    throw new Error("Invalid URL host");
+  }
+
+  return parsedUrl.href;
+}
+
 export function validateQrCodeUrl(rawUrl: string): QrCodeUrlValidationResult {
   const trimmedUrl = rawUrl.trim();
 
@@ -26,19 +94,7 @@ export function validateQrCodeUrl(rawUrl: string): QrCodeUrlValidationResult {
   }
 
   try {
-    const parsedUrl = new URL(trimmedUrl);
-
-    // 첫 QR 기능 PR은 일반 웹 URL만 지원한다.
-    // file:, mailto:, javascript: 같은 scheme은 QR로 만들 수 있어도 사용 범위와 보안 기대가 다르다.
-    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-      return {
-        isValid: false,
-        value: null,
-        errorMessage: "유효한 URL을 입력하세요.",
-      };
-    }
-
-    const normalizedUrl = parsedUrl.href;
+    const normalizedUrl = normalizeQrCodeUrl(trimmedUrl);
     const normalizedUrlByteLength = new TextEncoder().encode(normalizedUrl).length;
 
     // qrcode.react는 QR 최대 용량을 넘는 payload를 렌더링할 때 예외를 던질 수 있다.

@@ -31,6 +31,9 @@ describe("App", () => {
 
     expect(screen.getByRole("heading", { name: "QR코드" })).toBeInTheDocument();
     expect(screen.getByLabelText("URL")).toBeInTheDocument();
+    expect(
+      screen.getByText("주소를 입력하세요. https://는 생략할 수 있습니다."),
+    ).toBeInTheDocument();
     expect(screen.getByText("URL 입력 후 QR코드 표시")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "PNG 저장" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "SVG 저장" })).toBeDisabled();
@@ -75,6 +78,41 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "이미지 복사" })).toBeEnabled();
   });
 
+  it("renders a QR preview for a scheme-free domain URL", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "example.com");
+
+    expect(
+      screen.getByRole("img", { name: "입력한 URL의 QR코드 미리보기" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("생성됨")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "PNG 저장" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "SVG 저장" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "이미지 복사" })).toBeEnabled();
+  });
+
+  it("uses the normalized URL as the QR payload", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const urlInput = screen.getByLabelText("URL");
+
+    await user.type(urlInput, "https://example.com/");
+    const explicitSchemeQr = screen.getByRole("img", {
+      name: "입력한 URL의 QR코드 미리보기",
+    }).outerHTML;
+
+    await user.clear(urlInput);
+    await user.type(urlInput, "example.com");
+
+    expect(
+      screen.getByRole("img", { name: "입력한 URL의 QR코드 미리보기" })
+        .outerHTML,
+    ).toBe(explicitSchemeQr);
+  });
+
   it("shows a validation error instead of rendering an oversized QR payload", async () => {
     render(<App />);
 
@@ -101,6 +139,20 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "PNG 저장" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("PNG 저장 완료.");
+  });
+
+  it("passes the normalized URL to PNG save", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveQrCodePng).mockResolvedValue({ status: "saved" });
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "example.com");
+    await user.click(screen.getByRole("button", { name: "PNG 저장" }));
+
+    expect(saveQrCodePng).toHaveBeenCalledWith(
+      "https://example.com/",
+      expect.any(SVGSVGElement),
+    );
   });
 
   it("shows a cancelled status when PNG save dialog is cancelled", async () => {
@@ -150,6 +202,20 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "SVG 저장" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("SVG 저장 완료.");
+  });
+
+  it("passes the normalized URL to SVG save", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveQrCodeSvg).mockResolvedValue({ status: "saved" });
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "example.com");
+    await user.click(screen.getByRole("button", { name: "SVG 저장" }));
+
+    expect(saveQrCodeSvg).toHaveBeenCalledWith(
+      "https://example.com/",
+      expect.any(SVGSVGElement),
+    );
   });
 
   it("shows a cancelled status when SVG save dialog is cancelled", async () => {

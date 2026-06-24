@@ -143,9 +143,9 @@ export function QrCodeTool() {
           <input
             id="qr-code-url"
             className="url-input"
-            type="url"
+            type="text"
             inputMode="url"
-            placeholder="https://example.com"
+            placeholder="example.com"
             value={urlInput}
             aria-invalid={shouldShowError}
             aria-describedby={inputDescriptionId}
@@ -158,7 +158,7 @@ export function QrCodeTool() {
             </p>
           ) : (
             <p className="field-hint" id="qr-code-url-hint">
-              http:// 또는 https:// 주소를 입력하세요.
+              주소를 입력하세요. https://는 생략할 수 있습니다.
             </p>
           )}
         </div>
