@@ -19,12 +19,26 @@ describe("copyQrCodeImage", () => {
       copyPngImageToClipboard: vi.fn().mockResolvedValue({ status: "copied" }),
     };
 
-    await expect(copyQrCodeImage(svgElement, deps)).resolves.toEqual({
+    await expect(copyQrCodeImage(svgElement, "white", deps)).resolves.toEqual({
       status: "copied",
     });
 
-    expect(deps.renderPngBytes).toHaveBeenCalledWith(svgElement);
+    expect(deps.renderPngBytes).toHaveBeenCalledWith(svgElement, "white");
     expect(deps.copyPngImageToClipboard).toHaveBeenCalledWith(pngBytes);
+  });
+
+  it("passes the selected background to the PNG renderer", async () => {
+    const pngBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    const deps = {
+      renderPngBytes: vi.fn().mockResolvedValue(pngBytes),
+      copyPngImageToClipboard: vi.fn().mockResolvedValue({ status: "copied" }),
+    };
+
+    await expect(copyQrCodeImage(svgElement, "transparent", deps)).resolves.toEqual({
+      status: "copied",
+    });
+
+    expect(deps.renderPngBytes).toHaveBeenCalledWith(svgElement, "transparent");
   });
 
   it("returns unsupported when the clipboard backend is unavailable", async () => {
@@ -35,7 +49,7 @@ describe("copyQrCodeImage", () => {
         .mockResolvedValue({ status: "unsupported" }),
     };
 
-    await expect(copyQrCodeImage(svgElement, deps)).resolves.toEqual({
+    await expect(copyQrCodeImage(svgElement, "white", deps)).resolves.toEqual({
       status: "unsupported",
     });
   });

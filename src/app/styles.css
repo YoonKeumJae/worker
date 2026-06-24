@@ -116,6 +116,12 @@ select {
   gap: 8px;
 }
 
+.qr-background-options {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .field-label {
   color: #1d1d1f;
   font-size: 14px;
@@ -155,6 +161,23 @@ select {
 
 .field-error {
   color: #b42318;
+}
+
+.radio-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  color: #1d1d1f;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.radio-option input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #2441c2;
 }
 
 .preview-header {

@@ -31,6 +31,8 @@ describe("App", () => {
 
     expect(screen.getByRole("heading", { name: "QR코드" })).toBeInTheDocument();
     expect(screen.getByLabelText("URL")).toBeInTheDocument();
+    expect(screen.getByLabelText("흰색")).toBeChecked();
+    expect(screen.getByLabelText("투명")).not.toBeChecked();
     expect(
       screen.getByText("주소를 입력하세요. https://는 생략할 수 있습니다."),
     ).toBeInTheDocument();
@@ -152,6 +154,23 @@ describe("App", () => {
     expect(saveQrCodePng).toHaveBeenCalledWith(
       "https://example.com/",
       expect.any(SVGSVGElement),
+      "white",
+    );
+  });
+
+  it("passes the selected transparent background to PNG save", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveQrCodePng).mockResolvedValue({ status: "saved" });
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "example.com");
+    await user.click(screen.getByLabelText("투명"));
+    await user.click(screen.getByRole("button", { name: "PNG 저장" }));
+
+    expect(saveQrCodePng).toHaveBeenCalledWith(
+      "https://example.com/",
+      expect.any(SVGSVGElement),
+      "transparent",
     );
   });
 
@@ -215,6 +234,23 @@ describe("App", () => {
     expect(saveQrCodeSvg).toHaveBeenCalledWith(
       "https://example.com/",
       expect.any(SVGSVGElement),
+      "white",
+    );
+  });
+
+  it("passes the selected transparent background to SVG save", async () => {
+    const user = userEvent.setup();
+    vi.mocked(saveQrCodeSvg).mockResolvedValue({ status: "saved" });
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "example.com");
+    await user.click(screen.getByLabelText("투명"));
+    await user.click(screen.getByRole("button", { name: "SVG 저장" }));
+
+    expect(saveQrCodeSvg).toHaveBeenCalledWith(
+      "https://example.com/",
+      expect.any(SVGSVGElement),
+      "transparent",
     );
   });
 
@@ -265,6 +301,21 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "이미지 복사" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("복사 완료.");
+  });
+
+  it("passes the selected transparent background to image copy", async () => {
+    const user = userEvent.setup();
+    vi.mocked(copyQrCodeImage).mockResolvedValue({ status: "copied" });
+    render(<App />);
+
+    await user.type(screen.getByLabelText("URL"), "example.com");
+    await user.click(screen.getByLabelText("투명"));
+    await user.click(screen.getByRole("button", { name: "이미지 복사" }));
+
+    expect(copyQrCodeImage).toHaveBeenCalledWith(
+      expect.any(SVGSVGElement),
+      "transparent",
+    );
   });
 
   it("shows an unsupported status when image clipboard is unavailable", async () => {

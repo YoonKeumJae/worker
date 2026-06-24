@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
+import type { QrCodeBackground } from "./qrCodeBackground";
+import { defaultQrCodeBackground } from "./qrCodeBackground";
 import { renderQrSvgToPngBytes } from "./qrCodeImage";
 
 export type SaveQrCodePngResult =
@@ -12,7 +14,10 @@ export type SaveQrCodePngResult =
 
 export type SaveQrCodePngDeps = {
   openSaveDialog: (defaultPath: string) => Promise<string | null>;
-  renderPngBytes: (svgElement: SVGSVGElement) => Promise<Uint8Array>;
+  renderPngBytes: (
+    svgElement: SVGSVGElement,
+    background: QrCodeBackground,
+  ) => Promise<Uint8Array>;
   writePngFile: (path: string, pngBytes: Uint8Array) => Promise<void>;
 };
 
@@ -29,6 +34,7 @@ export function createQrCodePngFileName(urlValue: string): string {
 export async function saveQrCodePng(
   urlValue: string,
   svgElement: SVGSVGElement,
+  background: QrCodeBackground = defaultQrCodeBackground,
   deps: SaveQrCodePngDeps = defaultSaveQrCodePngDeps,
 ): Promise<SaveQrCodePngResult> {
   const selectedPath = await deps.openSaveDialog(createQrCodePngFileName(urlValue));
@@ -37,7 +43,7 @@ export async function saveQrCodePng(
     return { status: "cancelled" };
   }
 
-  const pngBytes = await deps.renderPngBytes(svgElement);
+  const pngBytes = await deps.renderPngBytes(svgElement, background);
   await deps.writePngFile(selectedPath, pngBytes);
 
   return { status: "saved" };

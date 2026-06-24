@@ -30,17 +30,34 @@ describe("saveQrCodePng", () => {
     };
 
     await expect(
-      saveQrCodePng("https://example.com", svgElement, deps),
+      saveQrCodePng("https://example.com", svgElement, "white", deps),
     ).resolves.toEqual({
       status: "saved",
     });
 
     expect(deps.openSaveDialog).toHaveBeenCalledWith("qr-example.com.png");
-    expect(deps.renderPngBytes).toHaveBeenCalledWith(svgElement);
+    expect(deps.renderPngBytes).toHaveBeenCalledWith(svgElement, "white");
     expect(deps.writePngFile).toHaveBeenCalledWith(
       "/tmp/qr-example.com.png",
       pngBytes,
     );
+  });
+
+  it("passes the selected background to the PNG renderer", async () => {
+    const pngBytes = new Uint8Array([137, 80, 78, 71]);
+    const deps = {
+      openSaveDialog: vi.fn().mockResolvedValue("/tmp/qr-example.com.png"),
+      renderPngBytes: vi.fn().mockResolvedValue(pngBytes),
+      writePngFile: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await expect(
+      saveQrCodePng("https://example.com", svgElement, "transparent", deps),
+    ).resolves.toEqual({
+      status: "saved",
+    });
+
+    expect(deps.renderPngBytes).toHaveBeenCalledWith(svgElement, "transparent");
   });
 
   it("returns cancelled without rendering or writing when dialog is cancelled", async () => {
@@ -51,7 +68,7 @@ describe("saveQrCodePng", () => {
     };
 
     await expect(
-      saveQrCodePng("https://example.com", svgElement, deps),
+      saveQrCodePng("https://example.com", svgElement, "white", deps),
     ).resolves.toEqual({
       status: "cancelled",
     });
