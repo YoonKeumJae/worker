@@ -87,9 +87,11 @@ PNG 저장:
 
 - 사용자가 저장 위치와 파일명을 선택한다.
 - Tauri file save dialog로 저장 위치와 파일명을 선택한다.
-- 기본 파일명은 정규화된 URL 전체 기반 `{URL slug}-qr.png` 형식이다.
+- 기본 파일명은 정규화된 URL 기반 `{URL slug}-qr.png` 형식이다.
 - URL slug는 정규화된 URL을 소문자로 바꾸고 `/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|`, 파일명 제어문자를 `-`로 치환한다.
 - URL slug의 연속 `-`는 하나로 줄이고 앞뒤 `-`는 제거한다.
+- URL에 userinfo, query, fragment가 있으면 기본 파일명에는 값이 노출되지 않도록 userinfo를 제거하고 query는 `query`, fragment는 `fragment` marker로 치환한 뒤, 정규화 URL 전체의 8자 hash를 붙인다.
+- 기본 파일명 전체 길이는 파일명 component 호환성을 위해 240자로 제한한다. 제한이 필요하면 URL slug 뒤를 자르고 정규화 URL 전체의 8자 hash를 붙인다.
 - URL slug가 비면 기본 파일명은 `url-qr.png`이다.
 - UI는 저장 경로 선택과 QR SVG의 PNG bytes 변환을 담당한다.
 - Rust command `save_qr_code_png`는 선택 경로에 PNG bytes를 저장한다.
@@ -102,7 +104,7 @@ SVG 저장:
 
 - 사용자가 저장 위치와 파일명을 선택한다.
 - Tauri file save dialog로 저장 위치와 파일명을 선택한다.
-- 기본 파일명은 정규화된 URL 전체 기반 `{URL slug}-qr.svg` 형식이다.
+- 기본 파일명은 정규화된 URL 기반 `{URL slug}-qr.svg` 형식이다.
 - URL slug 치환 규칙은 PNG 저장과 같다.
 - URL slug가 비면 기본 파일명은 `url-qr.svg`이다.
 - UI는 저장 경로 선택과 QR SVG 직렬화를 담당한다.
@@ -144,11 +146,13 @@ SVG 저장:
 - 정상 URL 입력 시 QR 미리보기 생성
 - 기본 배경 옵션은 `흰색`
 - PNG 저장은 선택한 배경 옵션을 PNG renderer에 전달
-- PNG 저장 기본 파일명은 정규화된 URL 전체 기반 `{URL slug}-qr.png`
+- PNG 저장 기본 파일명은 정규화된 URL 기반 `{URL slug}-qr.png`
 - SVG 저장은 선택한 배경 옵션을 SVG serializer에 전달
-- SVG 저장 기본 파일명은 정규화된 URL 전체 기반 `{URL slug}-qr.svg`
+- SVG 저장 기본 파일명은 정규화된 URL 기반 `{URL slug}-qr.svg`
 - scheme 없는 입력의 PNG/SVG 기본 파일명은 `https://`가 붙은 정규화 URL 기준
 - path, query, hash가 포함된 URL의 PNG/SVG 기본 파일명은 Windows 금지 문자와 파일명 제어문자를 포함하지 않음
+- userinfo, query, fragment 값은 PNG/SVG 기본 파일명에 평문으로 노출되지 않음
+- 긴 URL의 PNG/SVG 기본 파일명은 240자 이하이고 정규화 URL 전체의 8자 hash를 포함
 - URL slug가 비면 PNG는 `url-qr.png`, SVG는 `url-qr.svg`
 - 이미지 복사는 선택한 배경 옵션을 PNG renderer에 전달
 - 투명 PNG 렌더링은 canvas에 흰 배경 fill을 하지 않음

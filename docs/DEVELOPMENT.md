@@ -122,8 +122,9 @@ QR 기능 첫 버전 확인:
 - 잘못된 URL 오류 표시
 - PNG 저장
 - SVG 저장
-- PNG/SVG 저장 기본 파일명은 정규화된 URL 전체 기반 `{URL slug}-qr.<확장자>`
+- PNG/SVG 저장 기본 파일명은 정규화된 URL 기반 `{URL slug}-qr.<확장자>` 또는 `{URL slug}-{hash}-qr.<확장자>`
 - PNG/SVG 저장 기본 파일명은 Windows 금지 문자와 파일명 제어문자를 포함하지 않음
+- PNG/SVG 저장 기본 파일명은 userinfo, query, fragment 값을 평문으로 노출하지 않고 240자 이하를 유지
 - 이미지 클립보드 복사
 - 배경 옵션 기본값 `흰색`
 - 배경 옵션 `투명` 선택 후 PNG/SVG/클립보드 복사 동작

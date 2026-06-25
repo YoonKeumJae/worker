@@ -18,10 +18,35 @@ describe("createQrCodePngFileName", () => {
     const fileName =
       createQrCodePngFileName('https://example.com/a/b?q=1*2#bad"name<>|');
 
-    expect(fileName).toBe(
-      "https-example.com-a-b-q=1-2#bad%22name%3c%3e-qr.png",
+    expect(fileName).toMatch(
+      /^https-example\.com-a-b-query#fragment-[a-z0-9]{8}-qr\.png$/,
     );
     expect(fileName).not.toMatch(/[\\/:*?"<>|]/);
+    expect(fileName).not.toContain("q=1");
+    expect(fileName).not.toContain("bad");
+  });
+
+  it("does not expose URL credentials in the default PNG file name", () => {
+    const fileName = createQrCodePngFileName(
+      "https://user:password@example.com/path?token=secret#secret",
+    );
+
+    expect(fileName).toMatch(
+      /^https-example\.com-path-query#fragment-[a-z0-9]{8}-qr\.png$/,
+    );
+    expect(fileName).not.toContain("user");
+    expect(fileName).not.toContain("password");
+    expect(fileName).not.toContain("token");
+    expect(fileName).not.toContain("secret");
+  });
+
+  it("limits long PNG file names to a safe file-name component length", () => {
+    const fileName = createQrCodePngFileName(
+      `https://example.com/${"a".repeat(500)}`,
+    );
+
+    expect(fileName).toHaveLength(240);
+    expect(fileName).toMatch(/[a-z0-9]{8}-qr\.png$/);
   });
 
   it("falls back to URL slug when the PNG file name slug is empty", () => {
