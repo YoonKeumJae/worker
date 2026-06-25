@@ -6,16 +6,55 @@ import {
 } from "./qrCodeSvg";
 
 describe("createQrCodeSvgFileName", () => {
-  it("uses URL host for the default SVG file name", () => {
+  it("uses normalized URL slug for the default SVG file name", () => {
     expect(createQrCodeSvgFileName("https://Example.com/path")).toBe(
-      "qr-example.com.svg",
+      "https-example.com-path-qr.svg",
     );
   });
 
-  it("sanitizes host characters for the default SVG file name", () => {
-    expect(createQrCodeSvgFileName("https://한글.example.com/path")).toBe(
-      "qr-xn--bj0bj06e.example.com.svg",
+  it("uses normalized URL for scheme-free input in the default SVG file name", () => {
+    expect(createQrCodeSvgFileName("https://example.com/")).toBe(
+      "https-example.com-qr.svg",
     );
+  });
+
+  it("sanitizes path, query, hash, and Windows forbidden characters for the default SVG file name", () => {
+    const fileName =
+      createQrCodeSvgFileName('https://example.com/a/b?q=1*2#bad"name<>|');
+
+    expect(fileName).toMatch(
+      /^https-example\.com-a-b-query#fragment-[a-z0-9]{8}-qr\.svg$/,
+    );
+    expect(fileName).not.toMatch(/[\\/:*?"<>|]/);
+    expect(fileName).not.toContain("q=1");
+    expect(fileName).not.toContain("bad");
+  });
+
+  it("does not expose URL credentials in the default SVG file name", () => {
+    const fileName = createQrCodeSvgFileName(
+      "https://user:password@example.com/path?token=secret#secret",
+    );
+
+    expect(fileName).toMatch(
+      /^https-example\.com-path-query#fragment-[a-z0-9]{8}-qr\.svg$/,
+    );
+    expect(fileName).not.toContain("user");
+    expect(fileName).not.toContain("password");
+    expect(fileName).not.toContain("token");
+    expect(fileName).not.toContain("secret");
+  });
+
+  it("limits long SVG file names to a safe file-name component length", () => {
+    const fileName = createQrCodeSvgFileName(
+      `https://example.com/${"a".repeat(500)}`,
+    );
+
+    expect(fileName).toHaveLength(240);
+    expect(fileName).toMatch(/[a-z0-9]{8}-qr\.svg$/);
+  });
+
+  it("falls back to URL slug when the SVG file name slug is empty", () => {
+    expect(createQrCodeSvgFileName("\u0000")).toBe("url-qr.svg");
   });
 });
 
@@ -65,7 +104,7 @@ describe("saveQrCodeSvg", () => {
 
   it("writes serialized SVG text when a save path is selected", async () => {
     const deps = {
-      openSaveDialog: vi.fn().mockResolvedValue("/tmp/qr-example.com.svg"),
+      openSaveDialog: vi.fn().mockResolvedValue("/tmp/https-example.com-qr.svg"),
       serializeSvg: vi.fn().mockReturnValue("<svg></svg>"),
       writeSvgFile: vi.fn().mockResolvedValue(undefined),
     };
@@ -76,17 +115,17 @@ describe("saveQrCodeSvg", () => {
       status: "saved",
     });
 
-    expect(deps.openSaveDialog).toHaveBeenCalledWith("qr-example.com.svg");
+    expect(deps.openSaveDialog).toHaveBeenCalledWith("https-example.com-qr.svg");
     expect(deps.serializeSvg).toHaveBeenCalledWith(svgElement, "white");
     expect(deps.writeSvgFile).toHaveBeenCalledWith(
-      "/tmp/qr-example.com.svg",
+      "/tmp/https-example.com-qr.svg",
       "<svg></svg>",
     );
   });
 
   it("passes the selected background to the SVG serializer", async () => {
     const deps = {
-      openSaveDialog: vi.fn().mockResolvedValue("/tmp/qr-example.com.svg"),
+      openSaveDialog: vi.fn().mockResolvedValue("/tmp/https-example.com-qr.svg"),
       serializeSvg: vi.fn().mockReturnValue("<svg></svg>"),
       writeSvgFile: vi.fn().mockResolvedValue(undefined),
     };
