@@ -46,7 +46,7 @@ URL을 QR코드로 변환해 업무 중 빠르게 공유할 수 있게 한다.
 - scheme 없는 host label이 비어 있거나 잘못된 경우 허용하지 않는다.
 - 잘못된 URL은 QR 생성 action을 실행하지 않는다.
 - QR 렌더링 실패를 막기 위해 정규화된 URL은 UTF-8 기준 2,000 bytes를 넘지 않는다.
-- QR payload, PNG/SVG 기본 파일명 host 추출, 이미지 클립보드 복사는 정규화된 URL 기준으로 동작한다.
+- QR payload, PNG/SVG 기본 파일명, 이미지 클립보드 복사는 정규화된 URL 기준으로 동작한다.
 
 오류 메시지:
 
@@ -87,7 +87,10 @@ PNG 저장:
 
 - 사용자가 저장 위치와 파일명을 선택한다.
 - Tauri file save dialog로 저장 위치와 파일명을 선택한다.
-- 기본 파일명은 URL host 기반 `qr-<host>.png` 형식이다.
+- 기본 파일명은 정규화된 URL 전체 기반 `{URL slug}-qr.png` 형식이다.
+- URL slug는 정규화된 URL을 소문자로 바꾸고 `/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|`, 파일명 제어문자를 `-`로 치환한다.
+- URL slug의 연속 `-`는 하나로 줄이고 앞뒤 `-`는 제거한다.
+- URL slug가 비면 기본 파일명은 `url-qr.png`이다.
 - UI는 저장 경로 선택과 QR SVG의 PNG bytes 변환을 담당한다.
 - Rust command `save_qr_code_png`는 선택 경로에 PNG bytes를 저장한다.
 - 저장 성공, 저장 실패, 저장 취소 상태를 구분해 표시한다.
@@ -99,7 +102,9 @@ SVG 저장:
 
 - 사용자가 저장 위치와 파일명을 선택한다.
 - Tauri file save dialog로 저장 위치와 파일명을 선택한다.
-- 기본 파일명은 URL host 기반 `qr-<host>.svg` 형식이다.
+- 기본 파일명은 정규화된 URL 전체 기반 `{URL slug}-qr.svg` 형식이다.
+- URL slug 치환 규칙은 PNG 저장과 같다.
+- URL slug가 비면 기본 파일명은 `url-qr.svg`이다.
 - UI는 저장 경로 선택과 QR SVG 직렬화를 담당한다.
 - Rust command `save_qr_code_svg`는 선택 경로에 SVG text를 저장한다.
 - Rust command는 SVG 형태와 `.svg` 확장자를 확인한다.
@@ -139,7 +144,12 @@ SVG 저장:
 - 정상 URL 입력 시 QR 미리보기 생성
 - 기본 배경 옵션은 `흰색`
 - PNG 저장은 선택한 배경 옵션을 PNG renderer에 전달
+- PNG 저장 기본 파일명은 정규화된 URL 전체 기반 `{URL slug}-qr.png`
 - SVG 저장은 선택한 배경 옵션을 SVG serializer에 전달
+- SVG 저장 기본 파일명은 정규화된 URL 전체 기반 `{URL slug}-qr.svg`
+- scheme 없는 입력의 PNG/SVG 기본 파일명은 `https://`가 붙은 정규화 URL 기준
+- path, query, hash가 포함된 URL의 PNG/SVG 기본 파일명은 Windows 금지 문자와 파일명 제어문자를 포함하지 않음
+- URL slug가 비면 PNG는 `url-qr.png`, SVG는 `url-qr.svg`
 - 이미지 복사는 선택한 배경 옵션을 PNG renderer에 전달
 - 투명 PNG 렌더링은 canvas에 흰 배경 fill을 하지 않음
 - 흰 배경 PNG 렌더링은 canvas에 `#ffffff` fill을 수행

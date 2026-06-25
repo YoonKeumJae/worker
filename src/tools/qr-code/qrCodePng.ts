@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import type { QrCodeBackground } from "./qrCodeBackground";
 import { defaultQrCodeBackground } from "./qrCodeBackground";
+import { createQrCodeFileName } from "./qrCodeFileName";
 import { renderQrSvgToPngBytes } from "./qrCodeImage";
 
 export type SaveQrCodePngResult =
@@ -22,13 +23,7 @@ export type SaveQrCodePngDeps = {
 };
 
 export function createQrCodePngFileName(urlValue: string): string {
-  const parsedUrl = new URL(urlValue);
-  const hostSlug = parsedUrl.hostname
-    .toLowerCase()
-    .replace(/[^a-z0-9.-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  return `qr-${hostSlug || "url"}.png`;
+  return createQrCodeFileName(urlValue, "png");
 }
 
 export async function saveQrCodePng(

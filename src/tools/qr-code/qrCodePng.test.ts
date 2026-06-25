@@ -2,16 +2,30 @@ import { describe, expect, it, vi } from "vitest";
 import { createQrCodePngFileName, saveQrCodePng } from "./qrCodePng";
 
 describe("createQrCodePngFileName", () => {
-  it("uses URL host for the default PNG file name", () => {
+  it("uses normalized URL slug for the default PNG file name", () => {
     expect(createQrCodePngFileName("https://Example.com/path")).toBe(
-      "qr-example.com.png",
+      "https-example.com-path-qr.png",
     );
   });
 
-  it("sanitizes host characters for the default PNG file name", () => {
-    expect(createQrCodePngFileName("https://한글.example.com/path")).toBe(
-      "qr-xn--bj0bj06e.example.com.png",
+  it("uses normalized URL for scheme-free input in the default PNG file name", () => {
+    expect(createQrCodePngFileName("https://example.com/")).toBe(
+      "https-example.com-qr.png",
     );
+  });
+
+  it("sanitizes path, query, hash, and Windows forbidden characters for the default PNG file name", () => {
+    const fileName =
+      createQrCodePngFileName('https://example.com/a/b?q=1*2#bad"name<>|');
+
+    expect(fileName).toBe(
+      "https-example.com-a-b-q=1-2#bad%22name%3c%3e-qr.png",
+    );
+    expect(fileName).not.toMatch(/[\\/:*?"<>|]/);
+  });
+
+  it("falls back to URL slug when the PNG file name slug is empty", () => {
+    expect(createQrCodePngFileName("\u0000")).toBe("url-qr.png");
   });
 });
 
@@ -24,7 +38,7 @@ describe("saveQrCodePng", () => {
   it("writes rendered PNG bytes when a save path is selected", async () => {
     const pngBytes = new Uint8Array([137, 80, 78, 71]);
     const deps = {
-      openSaveDialog: vi.fn().mockResolvedValue("/tmp/qr-example.com.png"),
+      openSaveDialog: vi.fn().mockResolvedValue("/tmp/https-example.com-qr.png"),
       renderPngBytes: vi.fn().mockResolvedValue(pngBytes),
       writePngFile: vi.fn().mockResolvedValue(undefined),
     };
@@ -35,10 +49,10 @@ describe("saveQrCodePng", () => {
       status: "saved",
     });
 
-    expect(deps.openSaveDialog).toHaveBeenCalledWith("qr-example.com.png");
+    expect(deps.openSaveDialog).toHaveBeenCalledWith("https-example.com-qr.png");
     expect(deps.renderPngBytes).toHaveBeenCalledWith(svgElement, "white");
     expect(deps.writePngFile).toHaveBeenCalledWith(
-      "/tmp/qr-example.com.png",
+      "/tmp/https-example.com-qr.png",
       pngBytes,
     );
   });
@@ -46,7 +60,7 @@ describe("saveQrCodePng", () => {
   it("passes the selected background to the PNG renderer", async () => {
     const pngBytes = new Uint8Array([137, 80, 78, 71]);
     const deps = {
-      openSaveDialog: vi.fn().mockResolvedValue("/tmp/qr-example.com.png"),
+      openSaveDialog: vi.fn().mockResolvedValue("/tmp/https-example.com-qr.png"),
       renderPngBytes: vi.fn().mockResolvedValue(pngBytes),
       writePngFile: vi.fn().mockResolvedValue(undefined),
     };
