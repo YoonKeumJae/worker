@@ -43,6 +43,12 @@ struct PreparedConversion {
     status: ConvertedImageFileStatus,
 }
 
+#[derive(Default)]
+struct CommitRollback {
+    created_targets: Vec<PathBuf>,
+    backups: Vec<(PathBuf, PathBuf)>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum SourceImageFormat {
     Png,
@@ -50,6 +56,12 @@ enum SourceImageFormat {
     Heic,
     Webp,
     Other,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum HeicSignatureKind {
+    Still,
+    Sequence,
 }
 
 #[tauri::command]
@@ -77,9 +89,11 @@ fn commit_prepared_conversions(
     prepared_conversions: &[PreparedConversion],
 ) -> Result<Vec<ConvertedImageFile>, String> {
     let mut converted_files = Vec::with_capacity(prepared_conversions.len());
+    let mut rollback = CommitRollback::default();
 
     for prepared_conversion in prepared_conversions {
-        if let Err(error) = commit_prepared_conversion(prepared_conversion) {
+        if let Err(error) = commit_prepared_conversion(prepared_conversion, &mut rollback) {
+            rollback.restore();
             cleanup_prepared_conversions(prepared_conversions);
             return Err(error);
         }
@@ -94,6 +108,12 @@ fn commit_prepared_conversions(
                 .to_string(),
             status: prepared_conversion.status,
         });
+    }
+
+    if let Err(error) = finalize_prepared_conversions(prepared_conversions, &mut rollback) {
+        rollback.restore();
+        cleanup_prepared_conversions(prepared_conversions);
+        return Err(error);
     }
 
     Ok(converted_files)
@@ -123,6 +143,13 @@ fn create_conversion_plans(
         if !has_supported_source_extension(&source_path) {
             return Err(format!(
                 "지원하지 않는 이미지 파일입니다: {}",
+                source_path.to_string_lossy()
+            ));
+        }
+
+        if has_heic_sequence_signature(&source_path)? {
+            return Err(format!(
+                "HEIC 시퀀스는 아직 변환을 지원하지 않습니다: {}",
                 source_path.to_string_lossy()
             ));
         }
@@ -374,7 +401,10 @@ fn write_image(
     }
 }
 
-fn commit_prepared_conversion(prepared_conversion: &PreparedConversion) -> Result<(), String> {
+fn commit_prepared_conversion(
+    prepared_conversion: &PreparedConversion,
+    rollback: &mut CommitRollback,
+) -> Result<(), String> {
     let Some(temp_path) = prepared_conversion.temp_path.as_ref() else {
         return Ok(());
     };
@@ -385,50 +415,103 @@ fn commit_prepared_conversion(prepared_conversion: &PreparedConversion) -> Resul
             &prepared_conversion.target_path,
         )
     {
+        let backup_path =
+            create_unique_temp_path(&prepared_conversion.source_path, "worker-backup")?;
+        let _ = fs::remove_file(&backup_path);
+        fs::rename(&prepared_conversion.source_path, &backup_path).map_err(|error| {
+            let _ = fs::remove_file(temp_path);
+            format!(
+                "원본 이미지 백업 실패: {}: {error}",
+                prepared_conversion.source_path.to_string_lossy()
+            )
+        })?;
         fs::rename(temp_path, &prepared_conversion.target_path).map_err(|error| {
             let _ = fs::remove_file(temp_path);
+            let _ = fs::rename(&backup_path, &prepared_conversion.source_path);
             format!(
                 "이미지 교체 실패: {}: {error}",
                 prepared_conversion.target_path.to_string_lossy()
             )
         })?;
+        rollback
+            .created_targets
+            .push(prepared_conversion.target_path.clone());
+        rollback
+            .backups
+            .push((prepared_conversion.source_path.clone(), backup_path));
     } else {
-        link_temp_to_target_without_overwrite(temp_path, &prepared_conversion.target_path)?;
-        fs::remove_file(temp_path).map_err(|error| {
-            format!(
-                "임시 이미지 삭제 실패: {}: {error}",
-                temp_path.to_string_lossy()
-            )
-        })?;
-        fs::remove_file(&prepared_conversion.source_path).map_err(|error| {
-            format!(
-                "원본 이미지 삭제 실패: {}: {error}",
+        copy_temp_to_target_without_overwrite(temp_path, &prepared_conversion.target_path)?;
+        let backup_path =
+            create_unique_temp_path(&prepared_conversion.source_path, "worker-backup")?;
+        let _ = fs::remove_file(&backup_path);
+        if let Err(error) = fs::rename(&prepared_conversion.source_path, &backup_path) {
+            let _ = fs::remove_file(&prepared_conversion.target_path);
+            return Err(format!(
+                "원본 이미지 백업 실패: {}: {error}",
                 prepared_conversion.source_path.to_string_lossy()
-            )
-        })?;
+            ));
+        }
+        rollback
+            .created_targets
+            .push(prepared_conversion.target_path.clone());
+        rollback
+            .backups
+            .push((prepared_conversion.source_path.clone(), backup_path));
     }
 
     Ok(())
 }
 
-fn link_temp_to_target_without_overwrite(
+fn finalize_prepared_conversions(
+    prepared_conversions: &[PreparedConversion],
+    rollback: &mut CommitRollback,
+) -> Result<(), String> {
+    for prepared_conversion in prepared_conversions {
+        if let Some(temp_path) = prepared_conversion.temp_path.as_ref() {
+            let _ = fs::remove_file(temp_path);
+        }
+    }
+
+    rollback.remove_backups()
+}
+
+fn copy_temp_to_target_without_overwrite(
     temp_path: &Path,
     target_path: &Path,
 ) -> Result<(), String> {
-    fs::hard_link(temp_path, target_path).map_err(|error| {
-        let _ = fs::remove_file(temp_path);
-        if target_path.exists() {
-            format!(
-                "이미 같은 이름의 파일이 있습니다: {}",
-                target_path.to_string_lossy()
-            )
-        } else {
-            format!(
-                "이미지 이름 변경 실패: {}: {error}",
-                target_path.to_string_lossy()
-            )
-        }
-    })
+    let mut temp_file = fs::File::open(temp_path).map_err(|error| {
+        format!(
+            "임시 이미지 열기 실패: {}: {error}",
+            temp_path.to_string_lossy()
+        )
+    })?;
+    let mut target_file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(target_path)
+        .map_err(|error| {
+            if target_path.exists() {
+                format!(
+                    "이미 같은 이름의 파일이 있습니다: {}",
+                    target_path.to_string_lossy()
+                )
+            } else {
+                format!(
+                    "이미지 이름 변경 실패: {}: {error}",
+                    target_path.to_string_lossy()
+                )
+            }
+        })?;
+
+    if let Err(error) = std::io::copy(&mut temp_file, &mut target_file) {
+        let _ = fs::remove_file(target_path);
+        return Err(format!(
+            "이미지 파일 복사 실패: {}: {error}",
+            target_path.to_string_lossy()
+        ));
+    }
+
+    Ok(())
 }
 
 fn flatten_alpha_on_white(image: &image::DynamicImage) -> image::RgbImage {
@@ -637,7 +720,7 @@ fn same_file_metadata(_first_metadata: &fs::Metadata, _second_metadata: &fs::Met
 }
 
 fn detect_source_format(path: &Path) -> Result<SourceImageFormat, String> {
-    if has_heic_signature(path)? {
+    if detect_heic_signature(path)? == Some(HeicSignatureKind::Still) {
         return Ok(SourceImageFormat::Heic);
     }
 
@@ -656,7 +739,11 @@ fn detect_source_format(path: &Path) -> Result<SourceImageFormat, String> {
     })
 }
 
-fn has_heic_signature(path: &Path) -> Result<bool, String> {
+fn has_heic_sequence_signature(path: &Path) -> Result<bool, String> {
+    Ok(detect_heic_signature(path)? == Some(HeicSignatureKind::Sequence))
+}
+
+fn detect_heic_signature(path: &Path) -> Result<Option<HeicSignatureKind>, String> {
     let mut file = fs::File::open(path)
         .map_err(|error| format!("이미지 파일 읽기 실패: {}: {error}", path.to_string_lossy()))?;
     let mut header = [0; 64];
@@ -665,15 +752,21 @@ fn has_heic_signature(path: &Path) -> Result<bool, String> {
         .map_err(|error| format!("이미지 파일 읽기 실패: {}: {error}", path.to_string_lossy()))?;
 
     if bytes_read < 12 || &header[4..8] != b"ftyp" {
-        return Ok(false);
+        return Ok(None);
     }
 
-    Ok(header[8..bytes_read].chunks_exact(4).any(|brand| {
-        matches!(
-            brand,
-            b"heic" | b"heix" | b"hevc" | b"hevx" | b"heif" | b"mif1" | b"msf1"
-        )
-    }))
+    let mut has_still_brand = false;
+    for brand in header[8..bytes_read].chunks_exact(4) {
+        if matches!(brand, b"hevc" | b"hevx" | b"msf1") {
+            return Ok(Some(HeicSignatureKind::Sequence));
+        }
+
+        if matches!(brand, b"heic" | b"heix" | b"heif" | b"mif1") {
+            has_still_brand = true;
+        }
+    }
+
+    Ok(has_still_brand.then_some(HeicSignatureKind::Still))
 }
 
 fn is_animated_webp(path: &Path) -> Result<bool, String> {
@@ -738,6 +831,35 @@ impl SourceImageFormat {
     }
 }
 
+impl CommitRollback {
+    fn restore(&mut self) {
+        for target_path in self.created_targets.iter().rev() {
+            let _ = fs::remove_file(target_path);
+        }
+
+        for (source_path, backup_path) in self.backups.iter().rev() {
+            if backup_path.exists() {
+                let _ = fs::rename(backup_path, source_path);
+            }
+        }
+    }
+
+    fn remove_backups(&mut self) -> Result<(), String> {
+        for (_, backup_path) in &self.backups {
+            fs::remove_file(backup_path).map_err(|error| {
+                format!(
+                    "원본 이미지 백업 삭제 실패: {}: {error}",
+                    backup_path.to_string_lossy()
+                )
+            })?;
+        }
+
+        self.backups.clear();
+        self.created_targets.clear();
+        Ok(())
+    }
+}
+
 impl ImageFormatConversionTarget {
     fn extension(self) -> &'static str {
         match self {
@@ -799,6 +921,17 @@ mod tests {
         bytes.extend_from_slice(&[0; 4]);
         bytes.extend_from_slice(b"mif1");
         bytes.extend_from_slice(b"heic");
+        fs::write(path, bytes).unwrap();
+    }
+
+    fn write_fake_heic_sequence_signature(path: &std::path::Path) {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&24u32.to_be_bytes());
+        bytes.extend_from_slice(b"ftyp");
+        bytes.extend_from_slice(b"hevc");
+        bytes.extend_from_slice(&[0; 4]);
+        bytes.extend_from_slice(b"msf1");
+        bytes.extend_from_slice(b"hevc");
         fs::write(path, bytes).unwrap();
     }
 
@@ -1131,6 +1264,28 @@ mod tests {
     }
 
     #[test]
+    fn rejects_heic_sequence_signature() {
+        let source_path = temp_image_path("heic-sequence-signature", "heic");
+        write_fake_heic_sequence_signature(&source_path);
+
+        let result = convert_image_formats_blocking(
+            vec![source_path.to_string_lossy().to_string()],
+            ImageFormatConversionTarget::Jpeg,
+        );
+
+        assert_eq!(
+            result.unwrap_err(),
+            format!(
+                "HEIC 시퀀스는 아직 변환을 지원하지 않습니다: {}",
+                source_path.to_string_lossy()
+            )
+        );
+        assert!(source_path.exists());
+
+        fs::remove_file(source_path).unwrap();
+    }
+
+    #[test]
     fn does_not_skip_mislabeled_heic_when_target_is_jpeg() {
         let source_path = temp_image_path("mislabeled-heic-plan", "jpg");
         write_fake_heic_signature(&source_path);
@@ -1337,6 +1492,93 @@ mod tests {
     }
 
     #[test]
+    fn rolls_back_committed_targets_when_later_commit_fails() {
+        let first_source_path = temp_image_path("rollback-first-source", "png");
+        let first_target_path = temp_image_path("rollback-first-target", "jpg");
+        let first_temp_path = temp_image_path("rollback-first-temp", "jpg");
+        let second_source_path = temp_image_path("rollback-second-source", "png");
+        let second_target_path = temp_image_path("rollback-second-target", "jpg");
+        let second_temp_path = temp_image_path("rollback-second-temp", "jpg");
+
+        write_png(&first_source_path);
+        write_png(&second_source_path);
+        fs::write(&first_temp_path, b"first converted").unwrap();
+        fs::write(&second_temp_path, b"second converted").unwrap();
+        let _ = fs::remove_file(&first_target_path);
+        fs::create_dir(&second_target_path).unwrap();
+
+        let prepared_conversions = vec![
+            super::PreparedConversion {
+                source_path: first_source_path.clone(),
+                target_path: first_target_path.clone(),
+                temp_path: Some(first_temp_path.clone()),
+                status: ConvertedImageFileStatus::Converted,
+            },
+            super::PreparedConversion {
+                source_path: second_source_path.clone(),
+                target_path: second_target_path.clone(),
+                temp_path: Some(second_temp_path.clone()),
+                status: ConvertedImageFileStatus::Converted,
+            },
+        ];
+
+        let result = super::commit_prepared_conversions(&prepared_conversions);
+
+        assert!(result.is_err());
+        assert!(first_source_path.exists());
+        assert!(second_source_path.exists());
+        assert!(!first_target_path.exists());
+        assert!(!first_temp_path.exists());
+        assert!(!second_temp_path.exists());
+
+        fs::remove_file(first_source_path).unwrap();
+        fs::remove_file(second_source_path).unwrap();
+        fs::remove_dir(second_target_path).unwrap();
+    }
+
+    #[test]
+    fn restores_same_path_source_when_later_commit_fails() {
+        let first_source_path = temp_image_path("rollback-same-source", "jpg");
+        let first_temp_path = temp_image_path("rollback-same-temp", "jpg");
+        let second_source_path = temp_image_path("rollback-same-second-source", "png");
+        let second_target_path = temp_image_path("rollback-same-second-target", "jpg");
+        let second_temp_path = temp_image_path("rollback-same-second-temp", "jpg");
+
+        fs::write(&first_source_path, b"original same path").unwrap();
+        fs::write(&first_temp_path, b"converted same path").unwrap();
+        write_png(&second_source_path);
+        fs::write(&second_temp_path, b"second converted").unwrap();
+        fs::create_dir(&second_target_path).unwrap();
+
+        let prepared_conversions = vec![
+            super::PreparedConversion {
+                source_path: first_source_path.clone(),
+                target_path: first_source_path.clone(),
+                temp_path: Some(first_temp_path.clone()),
+                status: ConvertedImageFileStatus::Converted,
+            },
+            super::PreparedConversion {
+                source_path: second_source_path.clone(),
+                target_path: second_target_path.clone(),
+                temp_path: Some(second_temp_path.clone()),
+                status: ConvertedImageFileStatus::Converted,
+            },
+        ];
+
+        let result = super::commit_prepared_conversions(&prepared_conversions);
+
+        assert!(result.is_err());
+        assert_eq!(fs::read(&first_source_path).unwrap(), b"original same path");
+        assert!(second_source_path.exists());
+        assert!(!first_temp_path.exists());
+        assert!(!second_temp_path.exists());
+
+        fs::remove_file(first_source_path).unwrap();
+        fs::remove_file(second_source_path).unwrap();
+        fs::remove_dir(second_target_path).unwrap();
+    }
+
+    #[test]
     fn does_not_overwrite_target_created_after_prepare() {
         let source_path = temp_image_path("commit-race-source", "png");
         let target_path = temp_image_path("commit-race-target", "jpg");
@@ -1352,7 +1594,7 @@ mod tests {
             status: ConvertedImageFileStatus::Converted,
         };
 
-        let result = super::commit_prepared_conversion(&prepared_conversion);
+        let result = super::commit_prepared_conversions(&[prepared_conversion]);
 
         assert_eq!(
             result.unwrap_err(),
