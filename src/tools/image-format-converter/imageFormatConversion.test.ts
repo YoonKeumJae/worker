@@ -21,7 +21,6 @@ describe("imageFormatConversion", () => {
           name: "이미지",
           extensions: [
             "heic",
-            "heics",
             "heif",
             "jpeg",
             "jpg",

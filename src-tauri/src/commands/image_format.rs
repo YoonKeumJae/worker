@@ -393,11 +393,11 @@ fn commit_prepared_conversion(prepared_conversion: &PreparedConversion) -> Resul
             )
         })?;
     } else {
-        fs::rename(temp_path, &prepared_conversion.target_path).map_err(|error| {
-            let _ = fs::remove_file(temp_path);
+        link_temp_to_target_without_overwrite(temp_path, &prepared_conversion.target_path)?;
+        fs::remove_file(temp_path).map_err(|error| {
             format!(
-                "이미지 이름 변경 실패: {}: {error}",
-                prepared_conversion.target_path.to_string_lossy()
+                "임시 이미지 삭제 실패: {}: {error}",
+                temp_path.to_string_lossy()
             )
         })?;
         fs::remove_file(&prepared_conversion.source_path).map_err(|error| {
@@ -409,6 +409,26 @@ fn commit_prepared_conversion(prepared_conversion: &PreparedConversion) -> Resul
     }
 
     Ok(())
+}
+
+fn link_temp_to_target_without_overwrite(
+    temp_path: &Path,
+    target_path: &Path,
+) -> Result<(), String> {
+    fs::hard_link(temp_path, target_path).map_err(|error| {
+        let _ = fs::remove_file(temp_path);
+        if target_path.exists() {
+            format!(
+                "이미 같은 이름의 파일이 있습니다: {}",
+                target_path.to_string_lossy()
+            )
+        } else {
+            format!(
+                "이미지 이름 변경 실패: {}: {error}",
+                target_path.to_string_lossy()
+            )
+        }
+    })
 }
 
 fn flatten_alpha_on_white(image: &image::DynamicImage) -> image::RgbImage {
@@ -486,7 +506,7 @@ fn has_supported_source_extension(path: &Path) -> bool {
         .is_some_and(|extension| {
             matches!(
                 extension.to_ascii_lowercase().as_str(),
-                "heic" | "heics" | "heif" | "jpeg" | "jpg" | "png" | "webp"
+                "heic" | "heif" | "jpeg" | "jpg" | "png" | "webp"
             )
         })
 }
@@ -494,12 +514,7 @@ fn has_supported_source_extension(path: &Path) -> bool {
 fn is_heic_like_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| {
-            matches!(
-                extension.to_ascii_lowercase().as_str(),
-                "heic" | "heics" | "heif"
-            )
-        })
+        .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "heic" | "heif"))
 }
 
 fn has_target_extension(path: &Path, target_format: ImageFormatConversionTarget) -> bool {
@@ -509,7 +524,7 @@ fn has_target_extension(path: &Path, target_format: ImageFormatConversionTarget)
             let extension = extension.to_ascii_lowercase();
             match target_format {
                 ImageFormatConversionTarget::Png => extension == "png",
-                ImageFormatConversionTarget::Jpeg => extension == "jpg",
+                ImageFormatConversionTarget::Jpeg => extension == "jpg" || extension == "jpeg",
                 ImageFormatConversionTarget::Heic => extension == "heic",
                 ImageFormatConversionTarget::Webp => extension == "webp",
             }
@@ -1097,9 +1112,9 @@ mod tests {
         assert!(super::has_supported_source_extension(std::path::Path::new(
             "photo.heif"
         )));
-        assert!(super::has_supported_source_extension(std::path::Path::new(
-            "photo.heics"
-        )));
+        assert!(!super::has_supported_source_extension(
+            std::path::Path::new("photo.heics")
+        ));
     }
 
     #[test]
@@ -1154,6 +1169,27 @@ mod tests {
     #[test]
     fn skips_jpg_when_target_is_jpeg_without_reencoding() {
         let source_path = temp_image_path("jpg-to-jpeg-skip", "jpg");
+        write_jpeg(&source_path);
+        let original_bytes = fs::read(&source_path).unwrap();
+
+        let result = convert_image_formats_blocking(
+            vec![source_path.to_string_lossy().to_string()],
+            ImageFormatConversionTarget::Jpeg,
+        )
+        .unwrap();
+
+        assert!(source_path.exists());
+        assert_eq!(fs::read(&source_path).unwrap(), original_bytes);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].output_path, source_path.to_string_lossy());
+        assert_eq!(result[0].status, ConvertedImageFileStatus::Skipped);
+
+        fs::remove_file(source_path).unwrap();
+    }
+
+    #[test]
+    fn skips_jpeg_extension_when_target_is_jpeg_without_reencoding() {
+        let source_path = temp_image_path("jpeg-to-jpeg-skip", "jpeg");
         write_jpeg(&source_path);
         let original_bytes = fs::read(&source_path).unwrap();
 
@@ -1298,6 +1334,39 @@ mod tests {
         fs::remove_file(first_source_path).unwrap();
         fs::remove_file(second_source_path).unwrap();
         fs::remove_dir(first_target_path).unwrap();
+    }
+
+    #[test]
+    fn does_not_overwrite_target_created_after_prepare() {
+        let source_path = temp_image_path("commit-race-source", "png");
+        let target_path = temp_image_path("commit-race-target", "jpg");
+        let temp_path = temp_image_path("commit-race-temp", "jpg");
+        write_png(&source_path);
+        fs::write(&target_path, b"existing target").unwrap();
+        fs::write(&temp_path, b"converted temp").unwrap();
+
+        let prepared_conversion = super::PreparedConversion {
+            source_path: source_path.clone(),
+            target_path: target_path.clone(),
+            temp_path: Some(temp_path.clone()),
+            status: ConvertedImageFileStatus::Converted,
+        };
+
+        let result = super::commit_prepared_conversion(&prepared_conversion);
+
+        assert_eq!(
+            result.unwrap_err(),
+            format!(
+                "이미 같은 이름의 파일이 있습니다: {}",
+                target_path.to_string_lossy()
+            )
+        );
+        assert!(source_path.exists());
+        assert_eq!(fs::read(&target_path).unwrap(), b"existing target");
+        assert!(!temp_path.exists());
+
+        fs::remove_file(source_path).unwrap();
+        fs::remove_file(target_path).unwrap();
     }
 
     #[test]

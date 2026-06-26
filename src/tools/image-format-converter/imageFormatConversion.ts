@@ -40,7 +40,7 @@ export async function selectImageFiles(
     filters: [
       {
         name: "이미지",
-        extensions: ["heic", "heics", "heif", "jpeg", "jpg", "png", "webp"],
+        extensions: ["heic", "heif", "jpeg", "jpg", "png", "webp"],
       },
     ],
   });
