@@ -3,6 +3,7 @@
 `worker`는 업무 중 반복적으로 필요한 작은 작업들을 로컬에서 처리하는 macOS용 GUI 앱이다.
 
 첫 버전은 URL을 입력받아 QR코드를 생성하고, PNG/SVG 파일 저장과 이미지 클립보드 복사를 로컬에서 처리하는 기능을 제공한다.
+이미지 변환 도구는 선택한 PNG/JPG/HEIC/WebP 파일을 대상 포맷으로 일괄 변환하고 원본 파일을 대상 확장자 파일로 교체한다.
 
 ## 목표
 
@@ -21,10 +22,12 @@
 - QR 이미지 클립보드 복사
 - 내보내기 배경 선택: 흰색 또는 투명
 - PNG/SVG 저장 기본 파일명은 정규화된 URL 기반 안전한 slug를 쓰며, 긴 URL이나 민감 구성요소가 있는 URL은 hash를 붙인 `{URL slug}-{hash}-qr.<확장자>` 형식
+- 이미지 포맷 일괄 변환
+- PNG/JPG/HEIC/WebP 입력과 PNG/JPG/HEIC/WebP 출력
+- 변환 대상 파일명이 기존 파일과 충돌하면 원본을 변경하지 않고 중단
 
 ## 향후 기능 후보
 
-- 이미지 파일 확장자 변경
 - Windows 호환 한글 파일명 처리
 - 텍스트 변환 도구
 - 파일명 일괄 변경
@@ -61,6 +64,9 @@ src/
   components/
     ToolSidebar.tsx
   tools/
+    image-format-converter/
+      ImageFormatConverterTool.tsx
+      imageFormatConversion.ts
     qr-code/
       QrCodeTool.tsx
       qrCodeBackground.ts
@@ -141,4 +147,5 @@ pnpm run tauri:build
 - [기술 스택 결정](docs/DECISIONS/0001-tech-stack.md)
 - [문서 구조 결정](docs/DECISIONS/0002-documentation-structure.md)
 - [QR코드 기능 명세](docs/FEATURES/qr-code.md)
+- [이미지 포맷 변환 기능 명세](docs/FEATURES/image-format-converter.md)
 - [Tauri 스캐폴딩 계획](docs/PLANS/2026-06-10-scaffold-tauri.md)

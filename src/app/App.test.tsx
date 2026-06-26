@@ -42,6 +42,21 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "이미지 복사" })).toBeDisabled();
   });
 
+  it("switches to the image format converter tool", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "이미지 변환" }));
+
+    expect(
+      screen.getByRole("heading", { name: "이미지 변환" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "이미지 선택" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "변환" })).toBeDisabled();
+    expect(screen.getByLabelText("원본 파일 교체 확인")).toBeDisabled();
+    expect(screen.getByText("선택된 이미지 없음")).toBeInTheDocument();
+  });
+
   it("shows a validation error for unsupported URL input", async () => {
     const user = userEvent.setup();
     render(<App />);

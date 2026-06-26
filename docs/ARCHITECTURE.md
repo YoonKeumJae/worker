@@ -25,6 +25,10 @@ src/
   components/
     ToolSidebar.tsx
   tools/
+    image-format-converter/
+      ImageFormatConverterTool.tsx
+      imageFormatConversion.ts
+      imageFormatConversion.test.ts
     qr-code/
       QrCodeTool.tsx
       qrCodeBackground.ts
@@ -59,6 +63,7 @@ src-tauri/
     lib.rs
     commands/
       mod.rs
+      image_format.rs
       qr_code.rs
     tools/
       mod.rs
@@ -132,6 +137,9 @@ SVG 저장은 `src/tools/qr-code/qrCodeSvg.ts`에서 save dialog 호출, SVG 직
 SVG-to-PNG 변환은 `src/tools/qr-code/qrCodeImage.ts`에 분리해 PNG 저장과 이미지 복사가 공유한다.
 URL validation/normalization은 `src/tools/qr-code/qrCodeValidation.ts` 순수 함수로 분리한다.
 
+현재 image format converter tool module은 이미지 선택, 대상 포맷 선택, 원본 교체 확인, Rust command 호출, 변환 결과 상태 표시를 포함한다.
+이미지 파일 선택과 `convert_image_formats` command 계약은 `src/tools/image-format-converter/imageFormatConversion.ts`에 둔다.
+
 ### Tauri/Rust 레이어
 
 역할:
@@ -156,6 +164,7 @@ src-tauri/
 `save_qr_code_svg` command는 UI가 전달한 SVG text를 사용자가 선택한 `.svg` 경로에 저장한다.
 `copy_qr_code_image` command는 UI가 전달한 PNG bytes를 OS 이미지 클립보드에 저장한다.
 Rust command는 PNG signature, PNG decode 가능 여부, SVG 시작 형태, 파일 확장자를 검증한다.
+`convert_image_formats` command는 사용자가 선택한 PNG/JPG/HEIC/HEIF/WebP 파일 경로와 대상 포맷을 받아 파일을 변환한다. 대상 파일명이 중복되거나 이미 존재하면 변환 전 오류를 반환한다. 일반 이미지 decode는 확장자 대신 파일 내용으로 포맷을 추정한다. JPG 출력은 투명 픽셀을 흰색 배경으로 합성한다. HEIC/HEIF 처리는 macOS `sips`를 사용하고, WebP 처리는 Rust `image` WebP codec을 사용한다.
 
 현재 Tauri capability는 `core:default`, `opener:default`, `dialog:default`를 허용한다. 파일 저장은 사용자가 선택한 경로를 Rust command에 전달하는 방식으로 처리한다.
 
@@ -179,6 +188,17 @@ QR코드 생성 첫 버전 흐름:
 14. UI가 `copy_qr_code_image` command에 PNG bytes를 전달한다.
 15. Rust command가 PNG signature와 PNG decode 가능 여부를 확인한 뒤 OS 이미지 클립보드에 저장한다.
 16. clipboard backend를 열 수 없으면 지원되지 않는 환경 상태를 반환하고, 복사 실패는 오류로 반환한다.
+
+이미지 포맷 변환 흐름:
+
+1. 사용자가 대상 포맷을 선택한다.
+2. UI가 Tauri file open dialog로 하나 이상의 이미지 경로를 받는다.
+3. 사용자가 원본 파일 교체를 확인한다.
+4. UI가 선택 경로와 대상 포맷을 `convert_image_formats` command에 전달한다.
+5. Rust command가 선택 파일 존재 여부, 지원 확장자, 대상 경로 중복, 기존 파일 충돌을 검사한다.
+6. 충돌이 없으면 각 이미지를 decode하고 대상 포맷으로 임시 파일을 쓴다.
+7. 변환이 끝난 임시 파일은 원본 파일을 대체하고, 확장자가 바뀌면 대상 확장자 경로로 이름을 바꾼다.
+8. UI가 변환된 파일 경로 목록과 완료 상태를 표시한다.
 
 ## 기능 추가 방식
 
@@ -206,7 +226,7 @@ QR코드 생성 첫 버전 흐름:
 - 기본 기능은 네트워크 없이 동작한다.
 - 사용자 입력, 파일명, 파일 내용은 외부로 전송하지 않는다.
 - 파일 저장은 사용자 선택 경로에만 수행한다.
-- 원본 파일을 수정하는 기능은 기본적으로 복사본 생성 방식을 우선한다.
+- 원본 파일을 수정하는 기능은 기본적으로 복사본 생성 방식을 우선한다. 단, 이미지 포맷 변환처럼 명시적으로 원본 교체가 요구된 기능은 충돌 사전 검사와 임시 파일 변환으로 손상 위험을 줄인다.
 - destructive action은 확인 단계를 둔다.
 
 ## 확장성 기준
