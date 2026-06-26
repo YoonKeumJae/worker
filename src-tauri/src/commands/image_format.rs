@@ -71,10 +71,19 @@ fn convert_image_formats_blocking(
 ) -> Result<Vec<ConvertedImageFile>, String> {
     let plans = create_conversion_plans(paths, target_format)?;
     let prepared_conversions = prepare_conversions(plans, target_format)?;
+    commit_prepared_conversions(&prepared_conversions)
+}
+
+fn commit_prepared_conversions(
+    prepared_conversions: &[PreparedConversion],
+) -> Result<Vec<ConvertedImageFile>, String> {
     let mut converted_files = Vec::with_capacity(prepared_conversions.len());
 
     for prepared_conversion in prepared_conversions {
-        commit_prepared_conversion(&prepared_conversion)?;
+        if let Err(error) = commit_prepared_conversion(prepared_conversion) {
+            cleanup_prepared_conversions(prepared_conversions);
+            return Err(error);
+        }
         converted_files.push(ConvertedImageFile {
             original_path: prepared_conversion
                 .source_path
@@ -119,16 +128,15 @@ fn create_conversion_plans(
             ));
         }
 
-        if is_animated_webp(&source_path)? {
+        let source_format = detect_source_format(&source_path)?;
+        let already_target_format = source_format.matches_target(target_format)
+            && has_target_extension(&source_path, target_format);
+        if !already_target_format && is_animated_webp(&source_path)? {
             return Err(format!(
                 "애니메이션 WebP는 아직 변환을 지원하지 않습니다: {}",
                 source_path.to_string_lossy()
             ));
         }
-
-        let source_format = detect_source_format(&source_path)?;
-        let already_target_format = source_format.matches_target(target_format)
-            && has_target_extension(&source_path, target_format);
         let target_path = if already_target_format {
             source_path.clone()
         } else {
@@ -985,6 +993,33 @@ mod tests {
     }
 
     #[test]
+    fn skips_animated_webp_when_target_is_webp() {
+        let source_path = temp_image_path("animated-webp-skip", "webp");
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&18u32.to_le_bytes());
+        bytes.extend_from_slice(b"WEBP");
+        bytes.extend_from_slice(b"VP8X");
+        bytes.extend_from_slice(&10u32.to_le_bytes());
+        bytes.push(0x02);
+        bytes.extend_from_slice(&[0; 9]);
+        fs::write(&source_path, &bytes).unwrap();
+
+        let result = convert_image_formats_blocking(
+            vec![source_path.to_string_lossy().to_string()],
+            ImageFormatConversionTarget::Webp,
+        )
+        .unwrap();
+
+        assert_eq!(fs::read(&source_path).unwrap(), bytes);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].output_path, source_path.to_string_lossy());
+        assert_eq!(result[0].status, ConvertedImageFileStatus::Skipped);
+
+        fs::remove_file(source_path).unwrap();
+    }
+
+    #[test]
     fn cleans_intermediate_file_when_heic_to_webp_prepare_fails() {
         let source_path = temp_image_path("heic-webp-failure-source", "heic");
         let temp_path = temp_image_path("heic-webp-failure-target", "webp");
@@ -1008,6 +1043,51 @@ mod tests {
 
         let _ = fs::remove_file(source_path);
         let _ = fs::remove_file(temp_path);
+    }
+
+    #[test]
+    fn cleans_remaining_temp_files_when_commit_fails() {
+        let first_source_path = temp_image_path("commit-failure-first-source", "png");
+        let first_target_path = temp_image_path("commit-failure-first-target", "jpg");
+        let first_temp_path = temp_image_path("commit-failure-first-temp", "jpg");
+        let second_source_path = temp_image_path("commit-failure-second-source", "png");
+        let second_target_path = temp_image_path("commit-failure-second-target", "jpg");
+        let second_temp_path = temp_image_path("commit-failure-second-temp", "jpg");
+
+        write_png(&first_source_path);
+        write_png(&second_source_path);
+        fs::write(&first_temp_path, b"first temp").unwrap();
+        fs::write(&second_temp_path, b"second temp").unwrap();
+        fs::create_dir(&first_target_path).unwrap();
+        let _ = fs::remove_file(&second_target_path);
+
+        let prepared_conversions = vec![
+            super::PreparedConversion {
+                source_path: first_source_path.clone(),
+                target_path: first_target_path.clone(),
+                temp_path: Some(first_temp_path.clone()),
+                status: ConvertedImageFileStatus::Converted,
+            },
+            super::PreparedConversion {
+                source_path: second_source_path.clone(),
+                target_path: second_target_path.clone(),
+                temp_path: Some(second_temp_path.clone()),
+                status: ConvertedImageFileStatus::Converted,
+            },
+        ];
+
+        let result = super::commit_prepared_conversions(&prepared_conversions);
+
+        assert!(result.is_err());
+        assert!(!first_temp_path.exists());
+        assert!(!second_temp_path.exists());
+        assert!(first_source_path.exists());
+        assert!(second_source_path.exists());
+        assert!(!second_target_path.exists());
+
+        fs::remove_file(first_source_path).unwrap();
+        fs::remove_file(second_source_path).unwrap();
+        fs::remove_dir(first_target_path).unwrap();
     }
 
     #[test]
