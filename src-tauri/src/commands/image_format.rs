@@ -34,6 +34,7 @@ struct ConversionPlan {
     source_path: PathBuf,
     target_path: PathBuf,
     status: ConvertedImageFileStatus,
+    source_format: SourceImageFormat,
 }
 
 struct PreparedConversion {
@@ -41,6 +42,15 @@ struct PreparedConversion {
     target_path: PathBuf,
     temp_path: Option<PathBuf>,
     status: ConvertedImageFileStatus,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum SourceImageFormat {
+    Png,
+    Jpeg,
+    Heic,
+    Webp,
+    Other,
 }
 
 #[tauri::command]
@@ -116,7 +126,9 @@ fn create_conversion_plans(
             ));
         }
 
-        let already_target_format = is_already_target_format(&source_path, target_format);
+        let source_format = detect_source_format(&source_path)?;
+        let already_target_format = source_format.matches_target(target_format)
+            && has_target_extension(&source_path, target_format);
         let target_path = if already_target_format {
             source_path.clone()
         } else {
@@ -146,6 +158,7 @@ fn create_conversion_plans(
             } else {
                 ConvertedImageFileStatus::Converted
             },
+            source_format,
         });
     }
 
@@ -186,7 +199,10 @@ fn prepare_conversion(
 
     let temp_path = create_unique_temp_path(&plan.target_path, "worker-converting")?;
 
-    if target_format == ImageFormatConversionTarget::Heic || is_heic_like_path(&plan.source_path) {
+    if target_format == ImageFormatConversionTarget::Heic
+        || plan.source_format == SourceImageFormat::Heic
+        || is_heic_like_path(&plan.source_path)
+    {
         if let Err(error) = convert_with_sips(&plan.source_path, &temp_path, target_format) {
             let _ = fs::remove_file(&temp_path);
             return Err(error);
@@ -231,11 +247,14 @@ fn convert_with_sips(
 ) -> Result<(), String> {
     if target_format == ImageFormatConversionTarget::Webp {
         let intermediate_path = create_unique_temp_path(temp_path, "worker-intermediate")?;
-        run_sips_conversion(
+        if let Err(error) = run_sips_conversion(
             source_path,
             &intermediate_path,
             ImageFormatConversionTarget::Png,
-        )?;
+        ) {
+            let _ = fs::remove_file(&intermediate_path);
+            return Err(error);
+        }
         let decoded_image = open_image(&intermediate_path).map_err(|error| {
             let _ = fs::remove_file(&intermediate_path);
             error
@@ -466,7 +485,7 @@ fn is_heic_like_path(path: &Path) -> bool {
         })
 }
 
-fn is_already_target_format(path: &Path, target_format: ImageFormatConversionTarget) -> bool {
+fn has_target_extension(path: &Path, target_format: ImageFormatConversionTarget) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| {
@@ -478,6 +497,46 @@ fn is_already_target_format(path: &Path, target_format: ImageFormatConversionTar
                 ImageFormatConversionTarget::Webp => extension == "webp",
             }
         })
+}
+
+fn detect_source_format(path: &Path) -> Result<SourceImageFormat, String> {
+    if has_heic_signature(path)? {
+        return Ok(SourceImageFormat::Heic);
+    }
+
+    let mut file = fs::File::open(path)
+        .map_err(|error| format!("이미지 파일 읽기 실패: {}: {error}", path.to_string_lossy()))?;
+    let mut header = [0; 64];
+    let bytes_read = file
+        .read(&mut header)
+        .map_err(|error| format!("이미지 파일 읽기 실패: {}: {error}", path.to_string_lossy()))?;
+
+    Ok(match image::guess_format(&header[..bytes_read]) {
+        Ok(ImageFormat::Png) => SourceImageFormat::Png,
+        Ok(ImageFormat::Jpeg) => SourceImageFormat::Jpeg,
+        Ok(ImageFormat::WebP) => SourceImageFormat::Webp,
+        _ => SourceImageFormat::Other,
+    })
+}
+
+fn has_heic_signature(path: &Path) -> Result<bool, String> {
+    let mut file = fs::File::open(path)
+        .map_err(|error| format!("이미지 파일 읽기 실패: {}: {error}", path.to_string_lossy()))?;
+    let mut header = [0; 64];
+    let bytes_read = file
+        .read(&mut header)
+        .map_err(|error| format!("이미지 파일 읽기 실패: {}: {error}", path.to_string_lossy()))?;
+
+    if bytes_read < 12 || &header[4..8] != b"ftyp" {
+        return Ok(false);
+    }
+
+    Ok(header[8..bytes_read].chunks_exact(4).any(|brand| {
+        matches!(
+            brand,
+            b"heic" | b"heix" | b"hevc" | b"hevx" | b"heif" | b"mif1" | b"msf1"
+        )
+    }))
 }
 
 fn is_animated_webp(path: &Path) -> Result<bool, String> {
@@ -527,6 +586,18 @@ fn is_animated_webp(path: &Path) -> Result<bool, String> {
         {
             return Ok(false);
         }
+    }
+}
+
+impl SourceImageFormat {
+    fn matches_target(self, target_format: ImageFormatConversionTarget) -> bool {
+        matches!(
+            (self, target_format),
+            (SourceImageFormat::Png, ImageFormatConversionTarget::Png)
+                | (SourceImageFormat::Jpeg, ImageFormatConversionTarget::Jpeg)
+                | (SourceImageFormat::Heic, ImageFormatConversionTarget::Heic)
+                | (SourceImageFormat::Webp, ImageFormatConversionTarget::Webp)
+        )
     }
 }
 
@@ -581,6 +652,17 @@ mod tests {
         image
             .save_with_format(path, image::ImageFormat::Jpeg)
             .unwrap();
+    }
+
+    fn write_fake_heic_signature(path: &std::path::Path) {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&24u32.to_be_bytes());
+        bytes.extend_from_slice(b"ftyp");
+        bytes.extend_from_slice(b"heic");
+        bytes.extend_from_slice(&[0; 4]);
+        bytes.extend_from_slice(b"mif1");
+        bytes.extend_from_slice(b"heic");
+        fs::write(path, bytes).unwrap();
     }
 
     #[test]
@@ -803,6 +885,55 @@ mod tests {
     }
 
     #[test]
+    fn detects_mislabeled_heic_signature() {
+        let source_path = temp_image_path("mislabeled-heic-signature", "jpg");
+        write_fake_heic_signature(&source_path);
+
+        assert_eq!(
+            super::detect_source_format(&source_path).unwrap(),
+            super::SourceImageFormat::Heic
+        );
+
+        fs::remove_file(source_path).unwrap();
+    }
+
+    #[test]
+    fn does_not_skip_mislabeled_heic_when_target_is_jpeg() {
+        let source_path = temp_image_path("mislabeled-heic-plan", "jpg");
+        write_fake_heic_signature(&source_path);
+
+        let plans = super::create_conversion_plans(
+            vec![source_path.to_string_lossy().to_string()],
+            ImageFormatConversionTarget::Jpeg,
+        )
+        .unwrap();
+
+        assert_eq!(plans[0].source_format, super::SourceImageFormat::Heic);
+        assert_eq!(plans[0].status, ConvertedImageFileStatus::Converted);
+        assert_eq!(plans[0].target_path, source_path);
+
+        fs::remove_file(source_path).unwrap();
+    }
+
+    #[test]
+    fn does_not_skip_jpeg_with_heic_extension_when_target_is_heic() {
+        let source_path = temp_image_path("mislabeled-jpeg-plan", "heic");
+        write_jpeg(&source_path);
+
+        let plans = super::create_conversion_plans(
+            vec![source_path.to_string_lossy().to_string()],
+            ImageFormatConversionTarget::Heic,
+        )
+        .unwrap();
+
+        assert_eq!(plans[0].source_format, super::SourceImageFormat::Jpeg);
+        assert_eq!(plans[0].status, ConvertedImageFileStatus::Converted);
+        assert_eq!(plans[0].target_path, source_path);
+
+        fs::remove_file(source_path).unwrap();
+    }
+
+    #[test]
     fn skips_jpg_when_target_is_jpeg_without_reencoding() {
         let source_path = temp_image_path("jpg-to-jpeg-skip", "jpg");
         write_jpeg(&source_path);
@@ -851,6 +982,32 @@ mod tests {
         assert!(source_path.exists());
 
         fs::remove_file(source_path).unwrap();
+    }
+
+    #[test]
+    fn cleans_intermediate_file_when_heic_to_webp_prepare_fails() {
+        let source_path = temp_image_path("heic-webp-failure-source", "heic");
+        let temp_path = temp_image_path("heic-webp-failure-target", "webp");
+        let parent = temp_path.parent().unwrap();
+        let stem = temp_path.file_stem().unwrap().to_string_lossy();
+        write_fake_heic_signature(&source_path);
+        let _ = fs::remove_file(&temp_path);
+
+        let result =
+            super::convert_with_sips(&source_path, &temp_path, ImageFormatConversionTarget::Webp);
+
+        assert!(result.is_err());
+        let leaked_intermediate = fs::read_dir(parent)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().to_string())
+            .any(|file_name| {
+                file_name.contains(stem.as_ref()) && file_name.contains(".worker-intermediate-")
+            });
+        assert!(!leaked_intermediate);
+
+        let _ = fs::remove_file(source_path);
+        let _ = fs::remove_file(temp_path);
     }
 
     #[test]

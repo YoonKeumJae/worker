@@ -164,7 +164,7 @@ src-tauri/
 `save_qr_code_svg` command는 UI가 전달한 SVG text를 사용자가 선택한 `.svg` 경로에 저장한다.
 `copy_qr_code_image` command는 UI가 전달한 PNG bytes를 OS 이미지 클립보드에 저장한다.
 Rust command는 PNG signature, PNG decode 가능 여부, SVG 시작 형태, 파일 확장자를 검증한다.
-`convert_image_formats` command는 사용자가 선택한 PNG/JPG/HEIC/HEIF/WebP 파일 경로와 대상 포맷을 받아 파일을 변환한다. 대상 파일명이 중복되거나 이미 존재하면 변환 전 오류를 반환한다. 이미 대상 포맷인 파일은 재인코딩하지 않고 `skipped` 상태로 반환한다. 일반 이미지 decode는 확장자 대신 파일 내용으로 포맷을 추정하고 EXIF orientation을 픽셀에 적용한 뒤 저장한다. JPG 출력은 투명 픽셀을 흰색 배경으로 합성한다. HEIC/HEIF 처리는 macOS `sips`를 사용하고, WebP 처리는 Rust `image` WebP codec을 사용한다. 애니메이션 WebP는 정지 이미지로 손실되지 않도록 변환 전 거부한다. 변환 작업은 Tauri async runtime의 blocking worker에서 실행해 UI main thread를 막지 않는다.
+`convert_image_formats` command는 사용자가 선택한 PNG/JPG/HEIC/HEIF/WebP 파일 경로와 대상 포맷을 받아 파일을 변환한다. 대상 파일명이 중복되거나 이미 존재하면 변환 전 오류를 반환한다. 이미 대상 포맷인 파일은 재인코딩하지 않고 `skipped` 상태로 반환한다. 일반 이미지 decode는 확장자 대신 파일 내용으로 포맷을 추정하고 EXIF orientation을 픽셀에 적용한 뒤 저장한다. HEIC/HEIF는 확장자와 `ftyp` signature로 감지해 macOS `sips`를 사용하고, WebP 처리는 Rust `image` WebP codec을 사용한다. JPG 출력은 투명 픽셀을 흰색 배경으로 합성한다. 애니메이션 WebP는 정지 이미지로 손실되지 않도록 변환 전 거부한다. 변환 작업은 Tauri async runtime의 blocking worker에서 실행해 UI main thread를 막지 않는다.
 
 현재 Tauri capability는 `core:default`, `opener:default`, `dialog:default`를 허용한다. 파일 저장은 사용자가 선택한 경로를 Rust command에 전달하는 방식으로 처리한다.
 
