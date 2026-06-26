@@ -151,7 +151,10 @@ fn create_conversion_plans(
             ));
         }
 
-        if target_path != source_path && target_path.exists() {
+        if target_path != source_path
+            && target_path.exists()
+            && !paths_refer_to_same_existing_file(&source_path, &target_path)
+        {
             return Err(format!(
                 "이미 같은 이름의 파일이 있습니다: {}",
                 target_path.to_string_lossy()
@@ -375,7 +378,12 @@ fn commit_prepared_conversion(prepared_conversion: &PreparedConversion) -> Resul
         return Ok(());
     };
 
-    if prepared_conversion.target_path == prepared_conversion.source_path {
+    if prepared_conversion.target_path == prepared_conversion.source_path
+        || paths_refer_to_same_existing_file(
+            &prepared_conversion.source_path,
+            &prepared_conversion.target_path,
+        )
+    {
         fs::rename(temp_path, &prepared_conversion.target_path).map_err(|error| {
             let _ = fs::remove_file(temp_path);
             format!(
@@ -505,6 +513,29 @@ fn has_target_extension(path: &Path, target_format: ImageFormatConversionTarget)
                 ImageFormatConversionTarget::Webp => extension == "webp",
             }
         })
+}
+
+fn paths_refer_to_same_existing_file(first_path: &Path, second_path: &Path) -> bool {
+    let Ok(first_metadata) = fs::metadata(first_path) else {
+        return false;
+    };
+    let Ok(second_metadata) = fs::metadata(second_path) else {
+        return false;
+    };
+
+    same_file_metadata(&first_metadata, &second_metadata)
+}
+
+#[cfg(unix)]
+fn same_file_metadata(first_metadata: &fs::Metadata, second_metadata: &fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    first_metadata.dev() == second_metadata.dev() && first_metadata.ino() == second_metadata.ino()
+}
+
+#[cfg(not(unix))]
+fn same_file_metadata(_first_metadata: &fs::Metadata, _second_metadata: &fs::Metadata) -> bool {
+    false
 }
 
 fn detect_source_format(path: &Path) -> Result<SourceImageFormat, String> {
@@ -757,6 +788,33 @@ mod tests {
         assert_eq!(fs::read(&target_path).unwrap(), b"existing");
 
         fs::remove_file(source_path).unwrap();
+        fs::remove_file(target_path).unwrap();
+    }
+
+    #[test]
+    fn converts_when_target_differs_only_by_extension_case_on_case_insensitive_filesystem() {
+        let source_path = temp_image_path("case-only-target", "JPG");
+        let target_path = source_path.with_extension("jpg");
+        write_png(&source_path);
+
+        if !target_path.exists() {
+            fs::remove_file(source_path).unwrap();
+            return;
+        }
+
+        let result = convert_image_formats_blocking(
+            vec![source_path.to_string_lossy().to_string()],
+            ImageFormatConversionTarget::Jpeg,
+        )
+        .unwrap();
+
+        assert!(target_path.exists());
+        assert_eq!(result[0].output_path, target_path.to_string_lossy());
+        assert_eq!(result[0].status, ConvertedImageFileStatus::Converted);
+
+        let converted = image::open(&target_path).unwrap();
+        assert_eq!(converted.dimensions(), (1, 1));
+
         fs::remove_file(target_path).unwrap();
     }
 
