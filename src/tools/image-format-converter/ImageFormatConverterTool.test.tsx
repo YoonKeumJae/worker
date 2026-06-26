@@ -47,6 +47,8 @@ describe("ImageFormatConverterTool", () => {
       "1개 이미지 변환 완료.",
     );
     expect(screen.getByText("photo.jpg")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "변환" })).toBeDisabled();
+    expect(screen.getByLabelText("원본 파일 교체 확인")).not.toBeChecked();
   });
 
   it("shows the backend conversion error message", async () => {

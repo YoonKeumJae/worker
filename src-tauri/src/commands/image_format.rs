@@ -1,7 +1,7 @@
-use image::{ImageFormat, ImageReader};
+use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -26,19 +26,43 @@ struct ConversionPlan {
     target_path: PathBuf,
 }
 
+struct PreparedConversion {
+    source_path: PathBuf,
+    target_path: PathBuf,
+    temp_path: PathBuf,
+}
+
 #[tauri::command]
-pub fn convert_image_formats(
+pub async fn convert_image_formats(
+    paths: Vec<String>,
+    target_format: ImageFormatConversionTarget,
+) -> Result<Vec<ConvertedImageFile>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        convert_image_formats_blocking(paths, target_format)
+    })
+    .await
+    .map_err(|error| format!("이미지 변환 작업 실패: {error}"))?
+}
+
+fn convert_image_formats_blocking(
     paths: Vec<String>,
     target_format: ImageFormatConversionTarget,
 ) -> Result<Vec<ConvertedImageFile>, String> {
     let plans = create_conversion_plans(paths, target_format)?;
-    let mut converted_files = Vec::with_capacity(plans.len());
+    let prepared_conversions = prepare_conversions(plans, target_format)?;
+    let mut converted_files = Vec::with_capacity(prepared_conversions.len());
 
-    for plan in plans {
-        convert_image_file(&plan.source_path, &plan.target_path, target_format)?;
+    for prepared_conversion in prepared_conversions {
+        commit_prepared_conversion(&prepared_conversion)?;
         converted_files.push(ConvertedImageFile {
-            original_path: plan.source_path.to_string_lossy().to_string(),
-            output_path: plan.target_path.to_string_lossy().to_string(),
+            original_path: prepared_conversion
+                .source_path
+                .to_string_lossy()
+                .to_string(),
+            output_path: prepared_conversion
+                .target_path
+                .to_string_lossy()
+                .to_string(),
         });
     }
 
@@ -99,30 +123,65 @@ fn create_conversion_plans(
     Ok(plans)
 }
 
-fn convert_image_file(
-    source_path: &Path,
-    target_path: &Path,
+fn prepare_conversions(
+    plans: Vec<ConversionPlan>,
     target_format: ImageFormatConversionTarget,
-) -> Result<(), String> {
-    let temp_path = create_temp_path(target_path);
+) -> Result<Vec<PreparedConversion>, String> {
+    let mut prepared_conversions = Vec::with_capacity(plans.len());
 
-    if target_format == ImageFormatConversionTarget::Heic || is_heic_like_path(source_path) {
-        convert_with_sips(source_path, &temp_path, target_format)?;
-        replace_source_with_target(source_path, target_path, &temp_path)?;
-        return Ok(());
+    for plan in plans {
+        match prepare_conversion(plan, target_format) {
+            Ok(prepared_conversion) => prepared_conversions.push(prepared_conversion),
+            Err(error) => {
+                cleanup_prepared_conversions(&prepared_conversions);
+                return Err(error);
+            }
+        }
     }
 
-    let decoded_image = open_image(source_path)?;
+    Ok(prepared_conversions)
+}
 
-    write_image(&decoded_image, &temp_path, target_format).map_err(|error| {
+fn prepare_conversion(
+    plan: ConversionPlan,
+    target_format: ImageFormatConversionTarget,
+) -> Result<PreparedConversion, String> {
+    let temp_path = create_unique_temp_path(&plan.target_path, "worker-converting")?;
+
+    if target_format == ImageFormatConversionTarget::Heic || is_heic_like_path(&plan.source_path) {
+        if let Err(error) = convert_with_sips(&plan.source_path, &temp_path, target_format) {
+            let _ = fs::remove_file(&temp_path);
+            return Err(error);
+        }
+
+        return Ok(PreparedConversion {
+            source_path: plan.source_path,
+            target_path: plan.target_path,
+            temp_path,
+        });
+    }
+
+    let decoded_image = match open_image(&plan.source_path) {
+        Ok(decoded_image) => decoded_image,
+        Err(error) => {
+            let _ = fs::remove_file(&temp_path);
+            return Err(error);
+        }
+    };
+
+    if let Err(error) = write_image(&decoded_image, &temp_path, target_format) {
         let _ = fs::remove_file(&temp_path);
-        format!(
+        return Err(format!(
             "이미지 변환 실패: {}: {error}",
-            source_path.to_string_lossy()
-        )
-    })?;
+            plan.source_path.to_string_lossy()
+        ));
+    }
 
-    replace_source_with_target(source_path, target_path, &temp_path)
+    Ok(PreparedConversion {
+        source_path: plan.source_path,
+        target_path: plan.target_path,
+        temp_path,
+    })
 }
 
 fn convert_with_sips(
@@ -131,7 +190,7 @@ fn convert_with_sips(
     target_format: ImageFormatConversionTarget,
 ) -> Result<(), String> {
     if target_format == ImageFormatConversionTarget::Webp {
-        let intermediate_path = create_intermediate_png_path(temp_path);
+        let intermediate_path = create_unique_temp_path(temp_path, "worker-intermediate")?;
         run_sips_conversion(
             source_path,
             &intermediate_path,
@@ -187,7 +246,7 @@ fn run_sips_conversion(
 }
 
 fn open_image(source_path: &Path) -> Result<image::DynamicImage, String> {
-    ImageReader::open(source_path)
+    let mut decoder = ImageReader::open(source_path)
         .map_err(|error| {
             format!(
                 "이미지 열기 실패: {}: {error}",
@@ -201,13 +260,28 @@ fn open_image(source_path: &Path) -> Result<image::DynamicImage, String> {
                 source_path.to_string_lossy()
             )
         })?
-        .decode()
+        .into_decoder()
         .map_err(|error| {
             format!(
                 "이미지 해석 실패: {}: {error}",
                 source_path.to_string_lossy()
             )
-        })
+        })?;
+    let orientation = decoder.orientation().map_err(|error| {
+        format!(
+            "이미지 방향 정보 확인 실패: {}: {error}",
+            source_path.to_string_lossy()
+        )
+    })?;
+    let mut decoded_image = DynamicImage::from_decoder(decoder).map_err(|error| {
+        format!(
+            "이미지 해석 실패: {}: {error}",
+            source_path.to_string_lossy()
+        )
+    })?;
+    decoded_image.apply_orientation(orientation);
+
+    Ok(decoded_image)
 }
 
 fn write_image(
@@ -229,32 +303,35 @@ fn write_image(
     }
 }
 
-fn replace_source_with_target(
-    source_path: &Path,
-    target_path: &Path,
-    temp_path: &Path,
-) -> Result<(), String> {
-    if target_path == source_path {
-        fs::rename(&temp_path, target_path).map_err(|error| {
-            let _ = fs::remove_file(&temp_path);
+fn commit_prepared_conversion(prepared_conversion: &PreparedConversion) -> Result<(), String> {
+    if prepared_conversion.target_path == prepared_conversion.source_path {
+        fs::rename(
+            &prepared_conversion.temp_path,
+            &prepared_conversion.target_path,
+        )
+        .map_err(|error| {
+            let _ = fs::remove_file(&prepared_conversion.temp_path);
             format!(
                 "이미지 교체 실패: {}: {error}",
-                target_path.to_string_lossy()
+                prepared_conversion.target_path.to_string_lossy()
             )
         })?;
     } else {
-        fs::remove_file(source_path).map_err(|error| {
-            let _ = fs::remove_file(&temp_path);
-            format!(
-                "원본 이미지 삭제 실패: {}: {error}",
-                source_path.to_string_lossy()
-            )
-        })?;
-        fs::rename(&temp_path, target_path).map_err(|error| {
-            let _ = fs::remove_file(&temp_path);
+        fs::rename(
+            &prepared_conversion.temp_path,
+            &prepared_conversion.target_path,
+        )
+        .map_err(|error| {
+            let _ = fs::remove_file(&prepared_conversion.temp_path);
             format!(
                 "이미지 이름 변경 실패: {}: {error}",
-                target_path.to_string_lossy()
+                prepared_conversion.target_path.to_string_lossy()
+            )
+        })?;
+        fs::remove_file(&prepared_conversion.source_path).map_err(|error| {
+            format!(
+                "원본 이미지 삭제 실패: {}: {error}",
+                prepared_conversion.source_path.to_string_lossy()
             )
         })?;
     }
@@ -284,20 +361,49 @@ fn flatten_alpha_on_white(image: &image::DynamicImage) -> image::RgbImage {
     rgb_image
 }
 
-fn create_temp_path(target_path: &Path) -> PathBuf {
+fn create_unique_temp_path(target_path: &Path, marker: &str) -> Result<PathBuf, String> {
     let extension = target_path
         .extension()
         .and_then(|extension| extension.to_str())
         .unwrap_or("tmp");
-    let mut temp_path = target_path.to_path_buf();
-    temp_path.set_extension(format!("worker-converting-{extension}"));
-    temp_path
+    let file_stem = target_path
+        .file_stem()
+        .and_then(|file_stem| file_stem.to_str())
+        .unwrap_or("image");
+    let directory = target_path.parent().unwrap_or_else(|| Path::new("."));
+
+    for attempt in 0..100 {
+        let temp_path = directory.join(format!(
+            ".{file_stem}.{marker}-{}-{attempt}.{extension}",
+            std::process::id()
+        ));
+
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+        {
+            Ok(_) => return Ok(temp_path),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(format!(
+                    "임시 파일 생성 실패: {}: {error}",
+                    temp_path.to_string_lossy()
+                ));
+            }
+        }
+    }
+
+    Err(format!(
+        "충돌하지 않는 임시 파일명을 만들 수 없습니다: {}",
+        target_path.to_string_lossy()
+    ))
 }
 
-fn create_intermediate_png_path(target_path: &Path) -> PathBuf {
-    let mut intermediate_path = target_path.to_path_buf();
-    intermediate_path.set_extension("worker-intermediate-png");
-    intermediate_path
+fn cleanup_prepared_conversions(prepared_conversions: &[PreparedConversion]) {
+    for prepared_conversion in prepared_conversions {
+        let _ = fs::remove_file(&prepared_conversion.temp_path);
+    }
 }
 
 fn has_supported_source_extension(path: &Path) -> bool {
@@ -346,7 +452,7 @@ impl ImageFormatConversionTarget {
 
 #[cfg(test)]
 mod tests {
-    use super::{convert_image_formats, ImageFormatConversionTarget};
+    use super::{convert_image_formats_blocking, ImageFormatConversionTarget};
     use image::GenericImageView;
     use std::fs;
 
@@ -380,7 +486,7 @@ mod tests {
         write_png(&source_path);
         let _ = fs::remove_file(&expected_path);
 
-        let result = convert_image_formats(
+        let result = convert_image_formats_blocking(
             vec![source_path.to_string_lossy().to_string()],
             ImageFormatConversionTarget::Jpeg,
         )
@@ -407,7 +513,7 @@ mod tests {
         let _ = fs::remove_file(&first_expected_path);
         let _ = fs::remove_file(&second_expected_path);
 
-        let result = convert_image_formats(
+        let result = convert_image_formats_blocking(
             vec![
                 first_source_path.to_string_lossy().to_string(),
                 second_source_path.to_string_lossy().to_string(),
@@ -438,7 +544,7 @@ mod tests {
         write_png(&source_path);
         fs::write(&target_path, b"existing").unwrap();
 
-        let result = convert_image_formats(
+        let result = convert_image_formats_blocking(
             vec![source_path.to_string_lossy().to_string()],
             ImageFormatConversionTarget::Jpeg,
         );
@@ -458,13 +564,39 @@ mod tests {
     }
 
     #[test]
+    fn keeps_source_files_when_later_file_fails_during_batch_prepare() {
+        let first_source_path = temp_image_path("batch-failure-first", "png");
+        let second_source_path = temp_image_path("batch-failure-second", "png");
+        let first_expected_path = first_source_path.with_extension("jpg");
+        write_png(&first_source_path);
+        fs::write(&second_source_path, b"not a decodable image").unwrap();
+        let _ = fs::remove_file(&first_expected_path);
+
+        let result = convert_image_formats_blocking(
+            vec![
+                first_source_path.to_string_lossy().to_string(),
+                second_source_path.to_string_lossy().to_string(),
+            ],
+            ImageFormatConversionTarget::Jpeg,
+        );
+
+        assert!(result.is_err());
+        assert!(first_source_path.exists());
+        assert!(second_source_path.exists());
+        assert!(!first_expected_path.exists());
+
+        fs::remove_file(first_source_path).unwrap();
+        fs::remove_file(second_source_path).unwrap();
+    }
+
+    #[test]
     fn converts_jpeg_to_png_and_replaces_original_path() {
         let source_path = temp_image_path("jpeg-to-png", "jpeg");
         let expected_path = source_path.with_extension("png");
         write_jpeg(&source_path);
         let _ = fs::remove_file(&expected_path);
 
-        let result = convert_image_formats(
+        let result = convert_image_formats_blocking(
             vec![source_path.to_string_lossy().to_string()],
             ImageFormatConversionTarget::Png,
         )
@@ -487,7 +619,7 @@ mod tests {
         write_jpeg(&source_path);
         let _ = fs::remove_file(&expected_path);
 
-        let result = convert_image_formats(
+        let result = convert_image_formats_blocking(
             vec![source_path.to_string_lossy().to_string()],
             ImageFormatConversionTarget::Webp,
         )
@@ -508,7 +640,7 @@ mod tests {
         let source_path = temp_image_path("unsupported", "txt");
         fs::write(&source_path, b"not image").unwrap();
 
-        let result = convert_image_formats(
+        let result = convert_image_formats_blocking(
             vec![source_path.to_string_lossy().to_string()],
             ImageFormatConversionTarget::Png,
         );
@@ -531,7 +663,7 @@ mod tests {
         write_png(&source_path);
         let _ = fs::remove_file(&expected_path);
 
-        let result = convert_image_formats(
+        let result = convert_image_formats_blocking(
             vec![source_path.to_string_lossy().to_string()],
             ImageFormatConversionTarget::Webp,
         )
@@ -558,5 +690,25 @@ mod tests {
         assert!(super::has_supported_source_extension(std::path::Path::new(
             "photo.heics"
         )));
+    }
+
+    #[test]
+    fn creates_unique_temp_path_without_overwriting_existing_file() {
+        let target_path = temp_image_path("temp-collision", "jpg");
+        let file_stem = target_path.file_stem().unwrap().to_string_lossy();
+        let collision_path = target_path.with_file_name(format!(
+            ".{file_stem}.worker-converting-{}-0.jpg",
+            std::process::id()
+        ));
+        fs::write(&collision_path, b"existing temp").unwrap();
+
+        let temp_path = super::create_unique_temp_path(&target_path, "worker-converting").unwrap();
+
+        assert_ne!(temp_path, collision_path);
+        assert_eq!(fs::read(&collision_path).unwrap(), b"existing temp");
+        assert!(temp_path.exists());
+
+        fs::remove_file(collision_path).unwrap();
+        fs::remove_file(temp_path).unwrap();
     }
 }

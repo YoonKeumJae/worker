@@ -75,6 +75,7 @@ export function ImageFormatConverterTool() {
     try {
       const convertedFiles = await convertImageFormats(selectedPaths, targetFormat);
       setSelectedPaths(convertedFiles.map((file) => file.outputPath));
+      setHasConfirmedReplacement(false);
       setStatus({
         phase: "converted",
         message: `${convertedFiles.length}개 이미지 변환 완료.`,

@@ -164,7 +164,7 @@ src-tauri/
 `save_qr_code_svg` command는 UI가 전달한 SVG text를 사용자가 선택한 `.svg` 경로에 저장한다.
 `copy_qr_code_image` command는 UI가 전달한 PNG bytes를 OS 이미지 클립보드에 저장한다.
 Rust command는 PNG signature, PNG decode 가능 여부, SVG 시작 형태, 파일 확장자를 검증한다.
-`convert_image_formats` command는 사용자가 선택한 PNG/JPG/HEIC/HEIF/WebP 파일 경로와 대상 포맷을 받아 파일을 변환한다. 대상 파일명이 중복되거나 이미 존재하면 변환 전 오류를 반환한다. 일반 이미지 decode는 확장자 대신 파일 내용으로 포맷을 추정한다. JPG 출력은 투명 픽셀을 흰색 배경으로 합성한다. HEIC/HEIF 처리는 macOS `sips`를 사용하고, WebP 처리는 Rust `image` WebP codec을 사용한다.
+`convert_image_formats` command는 사용자가 선택한 PNG/JPG/HEIC/HEIF/WebP 파일 경로와 대상 포맷을 받아 파일을 변환한다. 대상 파일명이 중복되거나 이미 존재하면 변환 전 오류를 반환한다. 일반 이미지 decode는 확장자 대신 파일 내용으로 포맷을 추정하고 EXIF orientation을 픽셀에 적용한 뒤 저장한다. JPG 출력은 투명 픽셀을 흰색 배경으로 합성한다. HEIC/HEIF 처리는 macOS `sips`를 사용하고, WebP 처리는 Rust `image` WebP codec을 사용한다. 변환 작업은 Tauri async runtime의 blocking worker에서 실행해 UI main thread를 막지 않는다.
 
 현재 Tauri capability는 `core:default`, `opener:default`, `dialog:default`를 허용한다. 파일 저장은 사용자가 선택한 경로를 Rust command에 전달하는 방식으로 처리한다.
 
@@ -196,9 +196,10 @@ QR코드 생성 첫 버전 흐름:
 3. 사용자가 원본 파일 교체를 확인한다.
 4. UI가 선택 경로와 대상 포맷을 `convert_image_formats` command에 전달한다.
 5. Rust command가 선택 파일 존재 여부, 지원 확장자, 대상 경로 중복, 기존 파일 충돌을 검사한다.
-6. 충돌이 없으면 각 이미지를 decode하고 대상 포맷으로 임시 파일을 쓴다.
-7. 변환이 끝난 임시 파일은 원본 파일을 대체하고, 확장자가 바뀌면 대상 확장자 경로로 이름을 바꾼다.
-8. UI가 변환된 파일 경로 목록과 완료 상태를 표시한다.
+6. 충돌이 없으면 각 이미지를 decode하고 대상 포맷의 고유 임시 파일을 쓴다.
+7. 모든 임시 파일 생성이 성공한 뒤에만 원본 교체를 시작한다.
+8. 변환이 끝난 임시 파일은 원본 파일을 대체하고, 확장자가 바뀌면 대상 확장자 경로로 이름을 바꾼다.
+9. UI가 변환된 파일 경로 목록과 완료 상태를 표시한다.
 
 ## 기능 추가 방식
 
