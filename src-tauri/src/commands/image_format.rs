@@ -2,6 +2,7 @@ use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -19,17 +20,27 @@ pub enum ImageFormatConversionTarget {
 pub struct ConvertedImageFile {
     original_path: String,
     output_path: String,
+    status: ConvertedImageFileStatus,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum ConvertedImageFileStatus {
+    Converted,
+    Skipped,
 }
 
 struct ConversionPlan {
     source_path: PathBuf,
     target_path: PathBuf,
+    status: ConvertedImageFileStatus,
 }
 
 struct PreparedConversion {
     source_path: PathBuf,
     target_path: PathBuf,
-    temp_path: PathBuf,
+    temp_path: Option<PathBuf>,
+    status: ConvertedImageFileStatus,
 }
 
 #[tauri::command]
@@ -63,6 +74,7 @@ fn convert_image_formats_blocking(
                 .target_path
                 .to_string_lossy()
                 .to_string(),
+            status: prepared_conversion.status,
         });
     }
 
@@ -97,7 +109,19 @@ fn create_conversion_plans(
             ));
         }
 
-        let target_path = source_path.with_extension(target_format.extension());
+        if is_animated_webp(&source_path)? {
+            return Err(format!(
+                "애니메이션 WebP는 아직 변환을 지원하지 않습니다: {}",
+                source_path.to_string_lossy()
+            ));
+        }
+
+        let already_target_format = is_already_target_format(&source_path, target_format);
+        let target_path = if already_target_format {
+            source_path.clone()
+        } else {
+            source_path.with_extension(target_format.extension())
+        };
         let target_key = target_path.to_string_lossy().to_lowercase();
 
         if !target_paths.insert(target_key) {
@@ -117,6 +141,11 @@ fn create_conversion_plans(
         plans.push(ConversionPlan {
             source_path,
             target_path,
+            status: if already_target_format {
+                ConvertedImageFileStatus::Skipped
+            } else {
+                ConvertedImageFileStatus::Converted
+            },
         });
     }
 
@@ -146,6 +175,15 @@ fn prepare_conversion(
     plan: ConversionPlan,
     target_format: ImageFormatConversionTarget,
 ) -> Result<PreparedConversion, String> {
+    if plan.status == ConvertedImageFileStatus::Skipped {
+        return Ok(PreparedConversion {
+            source_path: plan.source_path,
+            target_path: plan.target_path,
+            temp_path: None,
+            status: plan.status,
+        });
+    }
+
     let temp_path = create_unique_temp_path(&plan.target_path, "worker-converting")?;
 
     if target_format == ImageFormatConversionTarget::Heic || is_heic_like_path(&plan.source_path) {
@@ -157,7 +195,8 @@ fn prepare_conversion(
         return Ok(PreparedConversion {
             source_path: plan.source_path,
             target_path: plan.target_path,
-            temp_path,
+            temp_path: Some(temp_path),
+            status: plan.status,
         });
     }
 
@@ -180,7 +219,8 @@ fn prepare_conversion(
     Ok(PreparedConversion {
         source_path: plan.source_path,
         target_path: plan.target_path,
-        temp_path,
+        temp_path: Some(temp_path),
+        status: plan.status,
     })
 }
 
@@ -304,25 +344,21 @@ fn write_image(
 }
 
 fn commit_prepared_conversion(prepared_conversion: &PreparedConversion) -> Result<(), String> {
+    let Some(temp_path) = prepared_conversion.temp_path.as_ref() else {
+        return Ok(());
+    };
+
     if prepared_conversion.target_path == prepared_conversion.source_path {
-        fs::rename(
-            &prepared_conversion.temp_path,
-            &prepared_conversion.target_path,
-        )
-        .map_err(|error| {
-            let _ = fs::remove_file(&prepared_conversion.temp_path);
+        fs::rename(temp_path, &prepared_conversion.target_path).map_err(|error| {
+            let _ = fs::remove_file(temp_path);
             format!(
                 "이미지 교체 실패: {}: {error}",
                 prepared_conversion.target_path.to_string_lossy()
             )
         })?;
     } else {
-        fs::rename(
-            &prepared_conversion.temp_path,
-            &prepared_conversion.target_path,
-        )
-        .map_err(|error| {
-            let _ = fs::remove_file(&prepared_conversion.temp_path);
+        fs::rename(temp_path, &prepared_conversion.target_path).map_err(|error| {
+            let _ = fs::remove_file(temp_path);
             format!(
                 "이미지 이름 변경 실패: {}: {error}",
                 prepared_conversion.target_path.to_string_lossy()
@@ -402,7 +438,9 @@ fn create_unique_temp_path(target_path: &Path, marker: &str) -> Result<PathBuf, 
 
 fn cleanup_prepared_conversions(prepared_conversions: &[PreparedConversion]) {
     for prepared_conversion in prepared_conversions {
-        let _ = fs::remove_file(&prepared_conversion.temp_path);
+        if let Some(temp_path) = prepared_conversion.temp_path.as_ref() {
+            let _ = fs::remove_file(temp_path);
+        }
     }
 }
 
@@ -426,6 +464,70 @@ fn is_heic_like_path(path: &Path) -> bool {
                 "heic" | "heics" | "heif"
             )
         })
+}
+
+fn is_already_target_format(path: &Path, target_format: ImageFormatConversionTarget) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            let extension = extension.to_ascii_lowercase();
+            match target_format {
+                ImageFormatConversionTarget::Png => extension == "png",
+                ImageFormatConversionTarget::Jpeg => extension == "jpg",
+                ImageFormatConversionTarget::Heic => extension == "heic",
+                ImageFormatConversionTarget::Webp => extension == "webp",
+            }
+        })
+}
+
+fn is_animated_webp(path: &Path) -> Result<bool, String> {
+    let mut file = fs::File::open(path)
+        .map_err(|error| format!("이미지 파일 읽기 실패: {}: {error}", path.to_string_lossy()))?;
+    let mut header = [0; 12];
+
+    if file.read_exact(&mut header).is_err() {
+        return Ok(false);
+    }
+
+    if &header[0..4] != b"RIFF" || &header[8..12] != b"WEBP" {
+        return Ok(false);
+    }
+
+    loop {
+        let mut chunk_header = [0; 8];
+        if file.read_exact(&mut chunk_header).is_err() {
+            return Ok(false);
+        }
+
+        let chunk_type = &chunk_header[0..4];
+        let chunk_size = u32::from_le_bytes([
+            chunk_header[4],
+            chunk_header[5],
+            chunk_header[6],
+            chunk_header[7],
+        ]);
+
+        if chunk_type == b"ANIM" {
+            return Ok(true);
+        }
+
+        if chunk_type == b"VP8X" && chunk_size > 0 {
+            let mut flags = [0; 1];
+            if file.read_exact(&mut flags).is_err() {
+                return Ok(false);
+            }
+
+            return Ok(flags[0] & 0x02 != 0);
+        }
+
+        let padded_size = chunk_size + (chunk_size % 2);
+        if file
+            .seek(SeekFrom::Current(i64::from(padded_size)))
+            .is_err()
+        {
+            return Ok(false);
+        }
+    }
 }
 
 impl ImageFormatConversionTarget {
@@ -452,7 +554,9 @@ impl ImageFormatConversionTarget {
 
 #[cfg(test)]
 mod tests {
-    use super::{convert_image_formats_blocking, ImageFormatConversionTarget};
+    use super::{
+        convert_image_formats_blocking, ConvertedImageFileStatus, ImageFormatConversionTarget,
+    };
     use image::GenericImageView;
     use std::fs;
 
@@ -495,6 +599,7 @@ mod tests {
         assert!(!source_path.exists());
         assert!(expected_path.exists());
         assert_eq!(result[0].output_path, expected_path.to_string_lossy());
+        assert_eq!(result[0].status, ConvertedImageFileStatus::Converted);
 
         let converted = image::open(&expected_path).unwrap();
         assert_eq!(converted.dimensions(), (1, 1));
@@ -527,6 +632,8 @@ mod tests {
         assert!(first_expected_path.exists());
         assert!(second_expected_path.exists());
         assert_eq!(result.len(), 2);
+        assert_eq!(result[0].status, ConvertedImageFileStatus::Converted);
+        assert_eq!(result[1].status, ConvertedImageFileStatus::Converted);
         assert_eq!(result[0].output_path, first_expected_path.to_string_lossy());
         assert_eq!(
             result[1].output_path,
@@ -605,6 +712,7 @@ mod tests {
         assert!(!source_path.exists());
         assert!(expected_path.exists());
         assert_eq!(result[0].output_path, expected_path.to_string_lossy());
+        assert_eq!(result[0].status, ConvertedImageFileStatus::Converted);
 
         let converted = image::open(&expected_path).unwrap();
         assert_eq!(converted.dimensions(), (1, 1));
@@ -628,6 +736,7 @@ mod tests {
         assert!(!source_path.exists());
         assert!(expected_path.exists());
         assert_eq!(result[0].output_path, expected_path.to_string_lossy());
+        assert_eq!(result[0].status, ConvertedImageFileStatus::Converted);
 
         let converted = image::open(&expected_path).unwrap();
         assert_eq!(converted.dimensions(), (1, 1));
@@ -672,6 +781,7 @@ mod tests {
         assert!(!source_path.exists());
         assert!(expected_path.exists());
         assert_eq!(result[0].output_path, expected_path.to_string_lossy());
+        assert_eq!(result[0].status, ConvertedImageFileStatus::Converted);
 
         let converted = image::open(&expected_path).unwrap();
         assert_eq!(converted.dimensions(), (1, 1));
@@ -690,6 +800,57 @@ mod tests {
         assert!(super::has_supported_source_extension(std::path::Path::new(
             "photo.heics"
         )));
+    }
+
+    #[test]
+    fn skips_jpg_when_target_is_jpeg_without_reencoding() {
+        let source_path = temp_image_path("jpg-to-jpeg-skip", "jpg");
+        write_jpeg(&source_path);
+        let original_bytes = fs::read(&source_path).unwrap();
+
+        let result = convert_image_formats_blocking(
+            vec![source_path.to_string_lossy().to_string()],
+            ImageFormatConversionTarget::Jpeg,
+        )
+        .unwrap();
+
+        assert!(source_path.exists());
+        assert_eq!(fs::read(&source_path).unwrap(), original_bytes);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].output_path, source_path.to_string_lossy());
+        assert_eq!(result[0].status, ConvertedImageFileStatus::Skipped);
+
+        fs::remove_file(source_path).unwrap();
+    }
+
+    #[test]
+    fn rejects_animated_webp_before_decoding() {
+        let source_path = temp_image_path("animated-webp", "webp");
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&18u32.to_le_bytes());
+        bytes.extend_from_slice(b"WEBP");
+        bytes.extend_from_slice(b"VP8X");
+        bytes.extend_from_slice(&10u32.to_le_bytes());
+        bytes.push(0x02);
+        bytes.extend_from_slice(&[0; 9]);
+        fs::write(&source_path, bytes).unwrap();
+
+        let result = convert_image_formats_blocking(
+            vec![source_path.to_string_lossy().to_string()],
+            ImageFormatConversionTarget::Png,
+        );
+
+        assert_eq!(
+            result.unwrap_err(),
+            format!(
+                "애니메이션 WebP는 아직 변환을 지원하지 않습니다: {}",
+                source_path.to_string_lossy()
+            )
+        );
+        assert!(source_path.exists());
+
+        fs::remove_file(source_path).unwrap();
     }
 
     #[test]

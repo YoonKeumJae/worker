@@ -44,6 +44,7 @@ export function ImageFormatConverterTool() {
       return;
     }
 
+    setHasConfirmedReplacement(false);
     setStatus({ phase: "selecting", message: "이미지 선택 중..." });
 
     try {
@@ -74,11 +75,18 @@ export function ImageFormatConverterTool() {
 
     try {
       const convertedFiles = await convertImageFormats(selectedPaths, targetFormat);
+      const convertedCount = convertedFiles.filter(
+        (file) => file.status === "converted",
+      ).length;
+      const skippedCount = convertedFiles.length - convertedCount;
       setSelectedPaths(convertedFiles.map((file) => file.outputPath));
       setHasConfirmedReplacement(false);
       setStatus({
         phase: "converted",
-        message: `${convertedFiles.length}개 이미지 변환 완료.`,
+        message:
+          skippedCount > 0
+            ? `${convertedCount}개 이미지 변환 완료. ${skippedCount}개 건너뜀.`
+            : `${convertedCount}개 이미지 변환 완료.`,
       });
     } catch (error) {
       setStatus({

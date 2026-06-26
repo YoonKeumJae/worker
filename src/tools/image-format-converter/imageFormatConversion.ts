@@ -10,6 +10,7 @@ export type ImageFormatConversionTarget =
 export type ConvertedImageFile = {
   originalPath: string;
   outputPath: string;
+  status: "converted" | "skipped";
 };
 
 type ImageOpenDialogOptions = Parameters<typeof open>[0];

@@ -41,7 +41,11 @@ describe("imageFormatConversion", () => {
 
   it("invokes the Tauri image conversion command", async () => {
     const convertedFiles = [
-      { originalPath: "/tmp/a.png", outputPath: "/tmp/a.jpg" },
+      {
+        originalPath: "/tmp/a.png",
+        outputPath: "/tmp/a.jpg",
+        status: "converted" as const,
+      },
     ];
     const invokeCommand = vi.fn().mockResolvedValue(convertedFiles);
 
