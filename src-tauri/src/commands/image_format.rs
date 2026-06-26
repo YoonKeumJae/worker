@@ -1,6 +1,5 @@
 use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -108,7 +107,7 @@ fn create_conversion_plans(
         return Err("변환할 이미지를 선택하세요.".to_string());
     }
 
-    let mut target_paths = HashSet::new();
+    let mut target_paths = Vec::with_capacity(paths.len());
     let mut plans = Vec::with_capacity(paths.len());
 
     for path in paths {
@@ -142,18 +141,20 @@ fn create_conversion_plans(
         } else {
             source_path.with_extension(target_format.extension())
         };
-        let target_key = target_path.to_string_lossy().to_lowercase();
-
-        if !target_paths.insert(target_key) {
+        if target_paths_conflict_with_existing_plan(&target_paths, &target_path)? {
             return Err(format!(
                 "변환 대상 파일명이 중복됩니다: {}",
                 target_path.to_string_lossy()
             ));
         }
+        target_paths.push(target_path.clone());
 
         if target_path != source_path
             && target_path.exists()
-            && !paths_refer_to_same_existing_file(&source_path, &target_path)
+            && !paths_differ_only_by_case_and_refer_to_same_existing_file(
+                &source_path,
+                &target_path,
+            )
         {
             return Err(format!(
                 "이미 같은 이름의 파일이 있습니다: {}",
@@ -379,7 +380,7 @@ fn commit_prepared_conversion(prepared_conversion: &PreparedConversion) -> Resul
     };
 
     if prepared_conversion.target_path == prepared_conversion.source_path
-        || paths_refer_to_same_existing_file(
+        || paths_differ_only_by_case_and_refer_to_same_existing_file(
             &prepared_conversion.source_path,
             &prepared_conversion.target_path,
         )
@@ -515,7 +516,35 @@ fn has_target_extension(path: &Path, target_format: ImageFormatConversionTarget)
         })
 }
 
-fn paths_refer_to_same_existing_file(first_path: &Path, second_path: &Path) -> bool {
+fn target_paths_conflict_with_existing_plan(
+    existing_target_paths: &[PathBuf],
+    target_path: &Path,
+) -> Result<bool, String> {
+    for existing_target_path in existing_target_paths {
+        if existing_target_path == target_path {
+            return Ok(true);
+        }
+
+        if paths_are_case_equivalent(existing_target_path, target_path)
+            && is_case_insensitive_directory(
+                target_path.parent().unwrap_or_else(|| Path::new(".")),
+            )?
+        {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+fn paths_differ_only_by_case_and_refer_to_same_existing_file(
+    first_path: &Path,
+    second_path: &Path,
+) -> bool {
+    if !paths_are_case_equivalent(first_path, second_path) {
+        return false;
+    }
+
     let Ok(first_metadata) = fs::metadata(first_path) else {
         return false;
     };
@@ -524,6 +553,60 @@ fn paths_refer_to_same_existing_file(first_path: &Path, second_path: &Path) -> b
     };
 
     same_file_metadata(&first_metadata, &second_metadata)
+}
+
+fn paths_are_case_equivalent(first_path: &Path, second_path: &Path) -> bool {
+    first_path != second_path
+        && first_path
+            .to_string_lossy()
+            .eq_ignore_ascii_case(&second_path.to_string_lossy())
+}
+
+fn is_case_insensitive_directory(directory: &Path) -> Result<bool, String> {
+    for attempt in 0..100 {
+        let probe_name = format!(".worker-case-check-{}-{attempt}.tmp", std::process::id());
+        let probe_path = directory.join(&probe_name);
+
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&probe_path)
+        {
+            Ok(_) => {
+                let toggled_path = directory.join(toggle_ascii_case(&probe_name));
+                let is_case_insensitive = toggled_path.exists();
+                let _ = fs::remove_file(&probe_path);
+                return Ok(is_case_insensitive);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(format!(
+                    "파일시스템 대소문자 확인 실패: {}: {error}",
+                    directory.to_string_lossy()
+                ));
+            }
+        }
+    }
+
+    Err(format!(
+        "파일시스템 대소문자 확인용 임시 파일을 만들 수 없습니다: {}",
+        directory.to_string_lossy()
+    ))
+}
+
+fn toggle_ascii_case(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_lowercase() {
+                character.to_ascii_uppercase()
+            } else if character.is_ascii_uppercase() {
+                character.to_ascii_lowercase()
+            } else {
+                character
+            }
+        })
+        .collect()
 }
 
 #[cfg(unix)]
@@ -816,6 +899,75 @@ mod tests {
         assert_eq!(converted.dimensions(), (1, 1));
 
         fs::remove_file(target_path).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_existing_target_hardlink_that_is_not_case_only_rename() {
+        let source_path = temp_image_path("hardlink-source", "png");
+        let target_path = source_path.with_extension("jpg");
+        write_png(&source_path);
+        let _ = fs::remove_file(&target_path);
+        fs::hard_link(&source_path, &target_path).unwrap();
+
+        let result = convert_image_formats_blocking(
+            vec![source_path.to_string_lossy().to_string()],
+            ImageFormatConversionTarget::Jpeg,
+        );
+
+        assert_eq!(
+            result.unwrap_err(),
+            format!(
+                "이미 같은 이름의 파일이 있습니다: {}",
+                target_path.to_string_lossy()
+            )
+        );
+        assert!(source_path.exists());
+        assert!(target_path.exists());
+
+        fs::remove_file(source_path).unwrap();
+        fs::remove_file(target_path).unwrap();
+    }
+
+    #[test]
+    fn accepts_case_distinct_targets_on_case_sensitive_filesystem() {
+        let first_source_path = std::env::temp_dir().join(format!(
+            "worker-image-format-case-sensitive-{}-Photo.png",
+            std::process::id()
+        ));
+        let second_source_path = std::env::temp_dir().join(format!(
+            "worker-image-format-case-sensitive-{}-photo.png",
+            std::process::id()
+        ));
+        let first_expected_path = first_source_path.with_extension("jpg");
+        let second_expected_path = second_source_path.with_extension("jpg");
+        let _ = fs::remove_file(&first_source_path);
+        let _ = fs::remove_file(&second_source_path);
+        let _ = fs::remove_file(&first_expected_path);
+        let _ = fs::remove_file(&second_expected_path);
+
+        write_png(&first_source_path);
+        if second_source_path.exists() {
+            fs::remove_file(first_source_path).unwrap();
+            return;
+        }
+        write_png(&second_source_path);
+
+        let result = convert_image_formats_blocking(
+            vec![
+                first_source_path.to_string_lossy().to_string(),
+                second_source_path.to_string_lossy().to_string(),
+            ],
+            ImageFormatConversionTarget::Jpeg,
+        )
+        .unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert!(first_expected_path.exists());
+        assert!(second_expected_path.exists());
+
+        fs::remove_file(first_expected_path).unwrap();
+        fs::remove_file(second_expected_path).unwrap();
     }
 
     #[test]
