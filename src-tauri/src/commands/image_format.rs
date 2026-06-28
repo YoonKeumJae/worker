@@ -110,11 +110,7 @@ fn commit_prepared_conversions(
         });
     }
 
-    if let Err(error) = finalize_prepared_conversions(prepared_conversions, &mut rollback) {
-        rollback.restore();
-        cleanup_prepared_conversions(prepared_conversions);
-        return Err(error);
-    }
+    finalize_prepared_conversions(prepared_conversions, &mut rollback);
 
     Ok(converted_files)
 }
@@ -160,6 +156,12 @@ fn create_conversion_plans(
         if !already_target_format && is_animated_webp(&source_path)? {
             return Err(format!(
                 "애니메이션 WebP는 아직 변환을 지원하지 않습니다: {}",
+                source_path.to_string_lossy()
+            ));
+        }
+        if !already_target_format && is_animated_png(&source_path)? {
+            return Err(format!(
+                "애니메이션 PNG는 아직 변환을 지원하지 않습니다: {}",
                 source_path.to_string_lossy()
             ));
         }
@@ -425,14 +427,12 @@ fn commit_prepared_conversion(
                 prepared_conversion.source_path.to_string_lossy()
             )
         })?;
-        fs::rename(temp_path, &prepared_conversion.target_path).map_err(|error| {
-            let _ = fs::remove_file(temp_path);
+        if let Err(error) =
+            copy_temp_to_target_without_overwrite(temp_path, &prepared_conversion.target_path)
+        {
             let _ = fs::rename(&backup_path, &prepared_conversion.source_path);
-            format!(
-                "이미지 교체 실패: {}: {error}",
-                prepared_conversion.target_path.to_string_lossy()
-            )
-        })?;
+            return Err(error);
+        }
         rollback
             .created_targets
             .push(prepared_conversion.target_path.clone());
@@ -465,14 +465,14 @@ fn commit_prepared_conversion(
 fn finalize_prepared_conversions(
     prepared_conversions: &[PreparedConversion],
     rollback: &mut CommitRollback,
-) -> Result<(), String> {
+) {
     for prepared_conversion in prepared_conversions {
         if let Some(temp_path) = prepared_conversion.temp_path.as_ref() {
             let _ = fs::remove_file(temp_path);
         }
     }
 
-    rollback.remove_backups()
+    rollback.remove_backups();
 }
 
 fn copy_temp_to_target_without_overwrite(
@@ -757,7 +757,7 @@ fn detect_heic_signature(path: &Path) -> Result<Option<HeicSignatureKind>, Strin
 
     let mut has_still_brand = false;
     for brand in header[8..bytes_read].chunks_exact(4) {
-        if matches!(brand, b"hevc" | b"hevx" | b"msf1") {
+        if matches!(brand, b"hevc" | b"hevx" | b"hevm" | b"hevs" | b"msf1") {
             return Ok(Some(HeicSignatureKind::Sequence));
         }
 
@@ -819,6 +819,50 @@ fn is_animated_webp(path: &Path) -> Result<bool, String> {
     }
 }
 
+fn is_animated_png(path: &Path) -> Result<bool, String> {
+    let mut file = fs::File::open(path)
+        .map_err(|error| format!("이미지 파일 읽기 실패: {}: {error}", path.to_string_lossy()))?;
+    let mut signature = [0; 8];
+
+    if file.read_exact(&mut signature).is_err() {
+        return Ok(false);
+    }
+
+    if signature != [137, 80, 78, 71, 13, 10, 26, 10] {
+        return Ok(false);
+    }
+
+    loop {
+        let mut chunk_header = [0; 8];
+        if file.read_exact(&mut chunk_header).is_err() {
+            return Ok(false);
+        }
+
+        let chunk_size = u32::from_be_bytes([
+            chunk_header[0],
+            chunk_header[1],
+            chunk_header[2],
+            chunk_header[3],
+        ]);
+        let chunk_type = &chunk_header[4..8];
+
+        if chunk_type == b"acTL" || chunk_type == b"fcTL" {
+            return Ok(true);
+        }
+
+        if chunk_type == b"IEND" {
+            return Ok(false);
+        }
+
+        if file
+            .seek(SeekFrom::Current(i64::from(chunk_size) + 4))
+            .is_err()
+        {
+            return Ok(false);
+        }
+    }
+}
+
 impl SourceImageFormat {
     fn matches_target(self, target_format: ImageFormatConversionTarget) -> bool {
         matches!(
@@ -844,19 +888,13 @@ impl CommitRollback {
         }
     }
 
-    fn remove_backups(&mut self) -> Result<(), String> {
+    fn remove_backups(&mut self) {
         for (_, backup_path) in &self.backups {
-            fs::remove_file(backup_path).map_err(|error| {
-                format!(
-                    "원본 이미지 백업 삭제 실패: {}: {error}",
-                    backup_path.to_string_lossy()
-                )
-            })?;
+            let _ = fs::remove_file(backup_path);
         }
 
         self.backups.clear();
         self.created_targets.clear();
-        Ok(())
     }
 }
 
@@ -928,10 +966,24 @@ mod tests {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(&24u32.to_be_bytes());
         bytes.extend_from_slice(b"ftyp");
-        bytes.extend_from_slice(b"hevc");
+        bytes.extend_from_slice(b"hevm");
         bytes.extend_from_slice(&[0; 4]);
-        bytes.extend_from_slice(b"msf1");
-        bytes.extend_from_slice(b"hevc");
+        bytes.extend_from_slice(b"hevs");
+        bytes.extend_from_slice(b"hevm");
+        fs::write(path, bytes).unwrap();
+    }
+
+    fn write_fake_apng_signature(path: &std::path::Path) {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&[137, 80, 78, 71, 13, 10, 26, 10]);
+        bytes.extend_from_slice(&13u32.to_be_bytes());
+        bytes.extend_from_slice(b"IHDR");
+        bytes.extend_from_slice(&[0; 13]);
+        bytes.extend_from_slice(&[0; 4]);
+        bytes.extend_from_slice(&8u32.to_be_bytes());
+        bytes.extend_from_slice(b"acTL");
+        bytes.extend_from_slice(&[0; 8]);
+        bytes.extend_from_slice(&[0; 4]);
         fs::write(path, bytes).unwrap();
     }
 
@@ -1394,6 +1446,48 @@ mod tests {
     }
 
     #[test]
+    fn rejects_animated_png_before_decoding() {
+        let source_path = temp_image_path("animated-png", "png");
+        write_fake_apng_signature(&source_path);
+
+        let result = convert_image_formats_blocking(
+            vec![source_path.to_string_lossy().to_string()],
+            ImageFormatConversionTarget::Jpeg,
+        );
+
+        assert_eq!(
+            result.unwrap_err(),
+            format!(
+                "애니메이션 PNG는 아직 변환을 지원하지 않습니다: {}",
+                source_path.to_string_lossy()
+            )
+        );
+        assert!(source_path.exists());
+
+        fs::remove_file(source_path).unwrap();
+    }
+
+    #[test]
+    fn skips_animated_png_when_target_is_png() {
+        let source_path = temp_image_path("animated-png-skip", "png");
+        write_fake_apng_signature(&source_path);
+        let original_bytes = fs::read(&source_path).unwrap();
+
+        let result = convert_image_formats_blocking(
+            vec![source_path.to_string_lossy().to_string()],
+            ImageFormatConversionTarget::Png,
+        )
+        .unwrap();
+
+        assert_eq!(fs::read(&source_path).unwrap(), original_bytes);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].output_path, source_path.to_string_lossy());
+        assert_eq!(result[0].status, ConvertedImageFileStatus::Skipped);
+
+        fs::remove_file(source_path).unwrap();
+    }
+
+    #[test]
     fn skips_animated_webp_when_target_is_webp() {
         let source_path = temp_image_path("animated-webp-skip", "webp");
         let mut bytes = Vec::new();
@@ -1576,6 +1670,27 @@ mod tests {
         fs::remove_file(first_source_path).unwrap();
         fs::remove_file(second_source_path).unwrap();
         fs::remove_dir(second_target_path).unwrap();
+    }
+
+    #[test]
+    fn keeps_committed_target_when_backup_cleanup_fails() {
+        let target_path = temp_image_path("backup-cleanup-target", "jpg");
+        let source_path = temp_image_path("backup-cleanup-source", "png");
+        let backup_path = temp_image_path("backup-cleanup-backup", "png");
+        fs::write(&target_path, b"converted target").unwrap();
+        fs::create_dir(&backup_path).unwrap();
+
+        let mut rollback = super::CommitRollback {
+            created_targets: vec![target_path.clone()],
+            backups: vec![(source_path, backup_path.clone())],
+        };
+
+        super::finalize_prepared_conversions(&[], &mut rollback);
+
+        assert_eq!(fs::read(&target_path).unwrap(), b"converted target");
+
+        fs::remove_file(target_path).unwrap();
+        fs::remove_dir(backup_path).unwrap();
     }
 
     #[test]
