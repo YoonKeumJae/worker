@@ -6,6 +6,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            crate::commands::image_format::convert_image_formats,
             crate::commands::qr_code::save_qr_code_png,
             crate::commands::qr_code::save_qr_code_svg,
             crate::commands::qr_code::copy_qr_code_image
